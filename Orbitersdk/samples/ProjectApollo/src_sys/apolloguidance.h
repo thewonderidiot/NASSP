@@ -33,6 +33,7 @@ class DSKY;
 class IMU;
 class CDU;
 class PanelSDK;
+class AGCBridge;
 
 #include <bitset>
 #include "powersource.h"
@@ -385,6 +386,8 @@ protected:
 
 	CDU &tcdu;
 	CDU &scdu;
+
+    AGCBridge *agc_bridge;
 
 	//
 	// Program data.

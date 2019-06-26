@@ -62,7 +62,7 @@
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
-      <AdditionalIncludeDirectories>../../src_aux;../../src_sys;../../src_mfd;../../src_lm;../../src_moon;../../src_csm;../../src_launch;../../src_landing;../../src_saturn;../../../../include;../../../../../Sound/OrbiterSound_SDK/VESSELSOUND_SDK/ShuttlePB_project;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../../src_aux;../../src_sys;../../src_mfd;../../src_lm;../../src_moon;../../src_csm;../../src_launch;../../src_landing;../../src_saturn;../../../../include;../../../../../Sound/OrbiterSound_SDK/VESSELSOUND_SDK/ShuttlePB_project;../../../../../ThirdParty/ftd2xx;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NDEBUG;WIN32;_WINDOWS;_USRDLL;LEM_EXPORTS;DIRECTSOUNDENABLED;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
@@ -79,10 +79,10 @@
       <Culture>0x040c</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>../../src_aux/dsound.lib;PanelSDK.lib;orbiter.lib;orbitersdk.lib;OrbiterSoundSDK40.lib;opengl32.lib;glu32.lib;winmm.lib;../../src_aux/dinput8.lib;../../src_aux/dxguid.lib;WS2_32.lib;User32.lib;Gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>../../src_aux/dsound.lib;PanelSDK.lib;orbiter.lib;orbitersdk.lib;OrbiterSoundSDK40.lib;opengl32.lib;glu32.lib;winmm.lib;../../src_aux/dinput8.lib;../../src_aux/dxguid.lib;WS2_32.lib;User32.lib;Gdi32.lib;ftd2xx.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>../../../../../Modules/ProjectApollo/LEM.dll</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <AdditionalLibraryDirectories>.\Release\PanelSDK;../../../../lib;../../../../../Sound/OrbiterSound_SDK/VESSELSOUND_SDK/ShuttlePB_project;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>.\Release\PanelSDK;../../../../lib;../../../../../Sound/OrbiterSound_SDK/VESSELSOUND_SDK/ShuttlePB_project;../../../../../ThirdParty/ftd2xx/i386;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>LIBC;libci;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ProgramDatabaseFile>.\Release\LEM/LEM.pdb</ProgramDatabaseFile>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
@@ -181,6 +181,7 @@
     <ClCompile Include="..\..\src_saturn\lvimu.cpp" />
     <ClCompile Include="..\..\src_saturn\s1bsystems.cpp" />
     <ClCompile Include="..\..\src_saturn\sivbsystems.cpp" />
+    <ClCompile Include="..\..\src_sys\AGCBridge.cpp" />
     <ClCompile Include="..\..\src_sys\apolloguidance.cpp">
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -402,6 +403,7 @@
     <ClInclude Include="..\..\src_saturn\LVIMU.h" />
     <ClInclude Include="..\..\src_saturn\s1bsystems.h" />
     <ClInclude Include="..\..\src_saturn\sivbsystems.h" />
+    <ClInclude Include="..\..\src_sys\AGCBridge.h" />
     <ClInclude Include="..\..\src_sys\apolloguidance.h" />
     <ClInclude Include="..\..\src_aux\BasicExcelVC6.hpp" />
     <ClInclude Include="..\..\src_sys\cautionwarning.h" />

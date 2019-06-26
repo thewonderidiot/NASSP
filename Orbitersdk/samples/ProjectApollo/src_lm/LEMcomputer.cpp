@@ -37,6 +37,7 @@
 #include "papi.h"
 #include "saturn.h"
 #include "LEM.h"
+#include "AGCBridge.h"
 
 #include "lm_channels.h"
 
@@ -51,6 +52,7 @@ LEMcomputer::LEMcomputer(SoundLib &s, DSKY &display, IMU &im, CDU &sc, CDU &tc, 
 
 	/* FIXME REMOVE THIS LATER, THIS IS TEMPORARY FOR TESTING ONLY AND SHOULD BE IN THE SCENARIO LATER */
 	/* LM PAD LOAD FOR LUMINARY 099 AND APOLLO 11  - OFFICIAL VERSION */
+    agc_bridge = new AGCBridge("MON001A");
 
 	thread.Resume();
 }
@@ -58,9 +60,7 @@ LEMcomputer::LEMcomputer(SoundLib &s, DSKY &display, IMU &im, CDU &sc, CDU &tc, 
 LEMcomputer::~LEMcomputer()
 
 {
-	//
-	// Nothing for now.
-	//
+    delete agc_bridge;
 }
 
 void LEMcomputer::SetMissionInfo(int MissionNo, char *OtherVessel)

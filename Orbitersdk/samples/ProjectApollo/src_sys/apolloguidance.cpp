@@ -41,8 +41,10 @@
 #include "cdu.h"
 #include "powersource.h"
 #include "papi.h"
+#include "AGCBridge.h"
 
 #include "tracer.h"
+
 
 ApolloGuidance::ApolloGuidance(SoundLib &s, DSKY &display, IMU &im, CDU &sc, CDU &tc, PanelSDK &p) : soundlib(s), dsky(display), imu(im), DCPower(0, p), scdu(sc), tcdu(tc)
 
@@ -52,7 +54,7 @@ ApolloGuidance::ApolloGuidance(SoundLib &s, DSKY &display, IMU &im, CDU &sc, CDU
 	LastTimestep = 0;
 	LastCycled = 0;
 	AGCHeat = NULL;
-
+    agc_bridge = NULL;
 	//
 	// Flight number.
 	//
