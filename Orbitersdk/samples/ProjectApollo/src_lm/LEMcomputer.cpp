@@ -129,6 +129,8 @@ void LEMcomputer::agcTimestep(double simt, double simdt)
 		}
 		x++;
 	}
+
+    agc_bridge->service();
 }
 
 void LEMcomputer::Run ()

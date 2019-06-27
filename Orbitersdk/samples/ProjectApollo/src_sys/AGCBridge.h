@@ -27,21 +27,52 @@
 #include <cstdint>
 #include "ftd2xx.h"
 
-typedef struct {
+#define SLIP_END     0xC0
+#define SLIP_ESC     0xDB
+#define SLIP_ESC_END 0xDC
+#define SLIP_ESC_ESC 0xDD
+
+#define MON_READ_MSG_SIZE 3
+#define MON_DATA_MSG_SIZE 5
+#define MON_DATA_FLAG 0x80
+
+class MonitorMessage {
+public:
+    MonitorMessage(uint8_t g, uint16_t a) {
+        group = g;
+        address = a;
+        has_data = false;
+    }
+
+    MonitorMessage(uint8_t g, uint16_t a, uint16_t d) {
+        group = g;
+        address = a;
+        has_data = true;
+        data = d;
+    }
+
     uint8_t group;
     uint16_t address;
+    boolean has_data;
     uint16_t data;
-} MonitorMessage_t;
+};
 
 class AGCBridge {
 public:
     AGCBridge(char *serial);
     ~AGCBridge();
-    void service(void);
+    void send_message(MonitorMessage &msg);
+    void service();
 
 private:
+    void read_messages();
+    boolean unslip_message(uint8_t *buf, uint16_t length, MonitorMessage *msg, uint16_t *bytes_used);
+    uint8_t slip(uint8_t *slipped, uint8_t *buf, uint8_t length);
+
     FT_HANDLE mon_handle;
     std::ofstream mon_log;
+    uint8_t read_buf[4096 + 2*MON_READ_MSG_SIZE + 2];
+    uint16_t read_buf_len;
 };
 
 #endif // _PA_AGCBRIDGE_H
