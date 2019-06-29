@@ -490,6 +490,11 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 	// Now load the data.
 	//
 
+    if (agc_bridge) {
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 1));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, MON_STOP_T12));
+    }
+
 	while (oapiReadScenario_nextline (scn, line)) {
 		if (!strnicmp(line, AGC_END_STRING, sizeof(AGC_END_STRING)))
 			break;
@@ -499,6 +504,9 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 			sscanf(line+4, "%o", &num);
 			sscanf(line+9, "%o", &val);
 			WriteMemory(num, val);
+            if (agc_bridge) {
+                agc_bridge->send_message(MonitorMessage(MON_GROUP_ERASABLE, num, val << 1));
+            }
 		}
 		else if (!strnicmp (line, "VICHAN", 6)) {
 			int num;
@@ -594,6 +602,13 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 		papiReadScenario_bool(line, "PROGALARM", ProgAlarm);
 		papiReadScenario_bool(line, "GIMBALLOCKALARM", GimbalLockAlarm);
 	}
+
+    if (agc_bridge) {
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 0));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_START, 1));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_PROCEED, 1));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 0));
+    }
 }
 
 //
