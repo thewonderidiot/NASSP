@@ -52,7 +52,7 @@ LEMcomputer::LEMcomputer(SoundLib &s, DSKY &display, IMU &im, CDU &sc, CDU &tc, 
 
 	/* FIXME REMOVE THIS LATER, THIS IS TEMPORARY FOR TESTING ONLY AND SHOULD BE IN THE SCENARIO LATER */
 	/* LM PAD LOAD FOR LUMINARY 099 AND APOLLO 11  - OFFICIAL VERSION */
-    agc_bridge = new AGCBridge("MON001A");
+    agc_bridge = new AGCBridge("MON001A", this);
 
 	thread.Resume();
 }
@@ -110,6 +110,9 @@ void LEMcomputer::SetMissionInfo(int MissionNo, char *OtherVessel)
 
 void LEMcomputer::agcTimestep(double simt, double simdt)
 {
+    agc_bridge->service(simt);
+    return;
+
 	// Do single timesteps to maintain sync with telemetry engine
 	SingleTimestepPrep(simt, simdt);        // Setup
 	if (LastCycled == 0) {					// Use simdt as difference if new run
@@ -129,8 +132,6 @@ void LEMcomputer::agcTimestep(double simt, double simdt)
 		}
 		x++;
 	}
-
-    agc_bridge->service();
 }
 
 void LEMcomputer::Run ()

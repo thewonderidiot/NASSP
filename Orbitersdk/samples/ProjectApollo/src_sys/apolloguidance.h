@@ -325,6 +325,9 @@ public:
 	///
 	bool GetProgAlarm() { return ProgAlarm; };
 	bool GetGimbalLockAlarm() { return GimbalLockAlarm; };
+    virtual void ProcessChannel10(ChannelValue val);
+    virtual void ProcessChannel11(ChannelValue val);
+    virtual void ProcessChannel163(ChannelValue val);
 
 protected:
 
@@ -334,9 +337,7 @@ protected:
 
 	virtual void ProcessChannel5(ChannelValue val);
 	virtual void ProcessChannel6(ChannelValue val);
-	virtual void ProcessChannel10(ChannelValue val);
 	virtual void ProcessChannel11Bit(int bit, bool val);
-	virtual void ProcessChannel11(ChannelValue val);
 	virtual void ProcessChannel13(ChannelValue val);
 	virtual void ProcessChannel14(ChannelValue val);
 	virtual void ProcessChannel34(ChannelValue val);
@@ -344,7 +345,6 @@ protected:
 	virtual void ProcessChannel141(ChannelValue val);
 	virtual void ProcessChannel142(ChannelValue val);
 	virtual void ProcessChannel143(ChannelValue val);
-	virtual void ProcessChannel163(ChannelValue val);
 	virtual void ProcessIMUCDUErrorCount(int channel, ChannelValue val);
 	public: virtual void GenerateHandrupt();
 	public: virtual void GenerateDownrupt();

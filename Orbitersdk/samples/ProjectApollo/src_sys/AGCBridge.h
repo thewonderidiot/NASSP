@@ -36,6 +36,15 @@
 #define MON_DATA_MSG_SIZE 5
 #define MON_DATA_FLAG 0x80
 
+#define MON_GROUP_MON_CHAN 0x22
+#define MON_GROUP_DSKY     0x23
+
+#define MON_DSKY_BUTTON  0x0009
+#define MON_DSKY_PROCEED 0x000A
+#define MON_DSKY_STATUS  0x000B
+
+class ApolloGuidance;
+
 class MonitorMessage {
 public:
     MonitorMessage(uint8_t g, uint16_t a) {
@@ -59,20 +68,24 @@ public:
 
 class AGCBridge {
 public:
-    AGCBridge(char *serial);
+    AGCBridge(char *serial, ApolloGuidance *guidance);
     ~AGCBridge();
     void send_message(MonitorMessage &msg);
-    void service();
+    void service(double simt);
 
 private:
     void read_messages();
+    void handle_message(MonitorMessage &msg);
     boolean unslip_message(uint8_t *buf, uint16_t length, MonitorMessage *msg, uint16_t *bytes_used);
     uint8_t slip(uint8_t *slipped, uint8_t *buf, uint8_t length);
 
+    ApolloGuidance *agc;
     FT_HANDLE mon_handle;
     std::ofstream mon_log;
     uint8_t read_buf[4096 + 2*MON_READ_MSG_SIZE + 2];
     uint16_t read_buf_len;
+    boolean dsky_flash;
+    double dsky_flash_t;
 };
 
 #endif // _PA_AGCBRIDGE_H

@@ -673,6 +673,12 @@ void ApolloGuidance::SetInputChannel(int channel, ChannelValue val)
 		}
 
 		WriteIO(&vagc, channel, val.to_ulong());
+
+        if (agc_bridge) {
+            if (channel == 015) {
+                agc_bridge->send_message(MonitorMessage(0x23, 0x0009, val.to_ulong()));
+            }
+        }
 	}
 }
 
@@ -724,6 +730,12 @@ void ApolloGuidance::SetInputChannelBit(int channel, int bit, bool val)
 	}}
 
 	WriteIO(&vagc, channel, data);
+
+    if (agc_bridge) {
+        if (channel == 032 && bit == 13 && val) {
+            agc_bridge->send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_PROCEED, val));
+        }
+    }
 }
 
 void ApolloGuidance::SetOutputChannel(int channel, ChannelValue val)
@@ -764,7 +776,7 @@ void ApolloGuidance::SetOutputChannel(int channel, ChannelValue val)
 		break;
 
 	case 010:
-		ProcessChannel10(val);
+		//ProcessChannel10(val);
 		break;
 
 	case 011:

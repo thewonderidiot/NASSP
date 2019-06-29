@@ -19,12 +19,18 @@
   See http://nassp.sourceforge.net/license/ for more details.
 
   **************************************************************************/
-
+#include "Orbitersdk.h"
+#include "stdio.h"
+#include "math.h"
+#include "soundlib.h"
+#include "ioChannels.h"
+#include "apolloguidance.h"
 #include "AGCBridge.h"
 
-AGCBridge::AGCBridge(char *serial) {
+AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
     FT_STATUS status;
 
+    agc = guidance;
     read_buf_len = 0;
 
     mon_log.open("monitor.log", std::ios::out | std::ios::trunc);
@@ -46,8 +52,6 @@ AGCBridge::AGCBridge(char *serial) {
     FT_SetFlowControl(mon_handle, FT_FLOW_RTS_CTS, 0, 0);
     FT_Purge(mon_handle, FT_PURGE_RX);
     FT_Purge(mon_handle, FT_PURGE_TX);
-
-    //send_message(MonitorMessage(0x20, 0x0001, 0x0001));
 }
 
 AGCBridge::~AGCBridge() {
@@ -56,8 +60,16 @@ AGCBridge::~AGCBridge() {
     mon_log.close();
 }
 
-void AGCBridge::service() {
-    send_message(MonitorMessage(0x21, 0x0003));
+void AGCBridge::service(double simt) {
+    if (dsky_flash && ((simt - dsky_flash_t) >= 0.32)) {
+        dsky_flash = false;
+        dsky_flash_t = simt;
+    } else if (!dsky_flash && ((simt - dsky_flash_t) >= 0.96)) {
+        dsky_flash = true;
+        dsky_flash_t = simt;
+    }
+    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 010));
+    send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_STATUS));
     read_messages();
 }
 
@@ -114,10 +126,49 @@ void AGCBridge::read_messages() {
             }
             break;
         }
-        mon_log << "MSG: " << std::hex << (uint16_t)msg.group << ", " << std::hex << msg.address << ", " << std::oct << msg.data << std::endl;
+        handle_message(msg);
     }
     
     read_buf_len -= read_offset;
+}
+
+void AGCBridge::handle_message(MonitorMessage &msg) {
+    switch (msg.group) {
+    case MON_GROUP_MON_CHAN:
+        switch (msg.address) {
+        case 010:
+            agc->ProcessChannel10(msg.data);
+            break;
+        }
+        break;
+
+    case MON_GROUP_DSKY:
+        switch (msg.address) {
+        case MON_DSKY_STATUS:
+            ChannelValue v = msg.data;
+            ChannelValue ch163 = 0;
+            ChannelValue ch11 = 0;
+
+            ch163[Ch163LightTemp] = v[6];
+            if (!dsky_flash) {
+                ch163[Ch163LightKbRel] = v[10];
+                ch163[Ch163LightOprErr] = v[9];
+            }
+            ch163[Ch163LightRestart] = v[3];
+            ch163[Ch163LightStandby] = v[11];
+            if (v[15]) {
+                ch163[Ch163FlashVerbNoun] = dsky_flash;
+            }
+            agc->ProcessChannel163(ch163);
+
+            ch11[LightComputerActivity] = v[14];
+            ch11[LightUplink] = v[13];
+            agc->ProcessChannel11(ch11);
+            break;
+        }
+        break;
+    }
+
 }
 
 uint8_t AGCBridge::slip(uint8_t *slipped, uint8_t *buf, uint8_t length) {
