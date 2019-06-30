@@ -32,6 +32,9 @@ AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
 
     agc = guidance;
     read_buf_len = 0;
+    for (uint8_t i = 0; i < 4; i++) {
+        channels[i] = 077777;
+    }
 
     mon_log.open("monitor.log", std::ios::out | std::ios::trunc);
 
@@ -55,6 +58,11 @@ AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
 }
 
 AGCBridge::~AGCBridge() {
+    send_message(MonitorMessage(MON_GROUP_NASSP, 0, 0));
+    send_message(MonitorMessage(MON_GROUP_NASSP, 1, 0));
+    send_message(MonitorMessage(MON_GROUP_NASSP, 2, 0));
+    send_message(MonitorMessage(MON_GROUP_NASSP, 3, 0));
+    Sleep(50);
     FT_Close(mon_handle);
     mon_log << "Monitor disconnected." << std::endl;
     mon_log.close();
@@ -68,7 +76,14 @@ void AGCBridge::service(double simt) {
         dsky_flash = true;
         dsky_flash_t = simt;
     }
+
+    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 005));
+    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 006));
     send_message(MonitorMessage(MON_GROUP_MON_CHAN, 010));
+    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 011));
+    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 012));
+    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 013));
+    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 014));
     send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_STATUS));
     read_messages();
 }
@@ -135,11 +150,7 @@ void AGCBridge::read_messages() {
 void AGCBridge::handle_message(MonitorMessage &msg) {
     switch (msg.group) {
     case MON_GROUP_MON_CHAN:
-        switch (msg.address) {
-        case 010:
-            agc->ProcessChannel10(msg.data);
-            break;
-        }
+        agc->SetOutputChannel(msg.address, msg.data);
         break;
 
     case MON_GROUP_DSKY:

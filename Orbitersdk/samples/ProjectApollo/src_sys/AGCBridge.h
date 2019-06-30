@@ -37,9 +37,11 @@
 #define MON_DATA_FLAG 0x80
 
 #define MON_GROUP_ERASABLE 0x00
+#define MON_GROUP_CHANNELS 0x02
 #define MON_GROUP_CONTROL  0x20
 #define MON_GROUP_MON_CHAN 0x22
 #define MON_GROUP_DSKY     0x23
+#define MON_GROUP_NASSP    0x26
 
 #define MON_CONTROL_START   0x0000
 #define MON_CONTROL_STOP    0x0001
@@ -81,6 +83,8 @@ public:
     ~AGCBridge();
     void send_message(MonitorMessage &msg);
     void service(double simt);
+
+    uint16_t channels[4];
 
 private:
     void read_messages();
