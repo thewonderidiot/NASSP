@@ -54,7 +54,8 @@ ApolloGuidance::ApolloGuidance(SoundLib &s, DSKY &display, IMU &im, CDU &sc, CDU
 	LastTimestep = 0;
 	LastCycled = 0;
 	AGCHeat = NULL;
-    agc_bridge = NULL;
+	agc_bridge = NULL;
+
 	//
 	// Flight number.
 	//
@@ -103,6 +104,9 @@ ApolloGuidance::~ApolloGuidance()
 #ifdef _DEBUG
 	fclose(out_file);
 #endif
+	if (agc_bridge) {
+		delete agc_bridge;
+	}
 }
 
 void ApolloGuidance::InitVirtualAGC(char *binfile)
@@ -285,15 +289,12 @@ void ApolloGuidance::SetErasable(int bank, int address, int value)
 		return;
 
 	vagc.Erasable[bank][address] = value;
-    if (agc_bridge) {
-        // FIXME: Figure out why I need to force a stop to prevent restarts...
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 2));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_ERASABLE, bank * 256 + address, value << 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 0));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_PROCEED, 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 0));
-    }
+
+	if (agc_bridge) {
+		agc_bridge->halt();
+		agc_bridge->set_erasable(bank, address, value);
+		agc_bridge->resume();
+	}
 }
 
 void ApolloGuidance::PulsePIPA(int RegPIPA, int pulses) 
@@ -321,18 +322,11 @@ void ApolloGuidance::PulsePIPA(int RegPIPA, int pulses)
     	}
 	}
 
-    if (agc_bridge) {
-        if (pulses < 0) {
-            pulses = (-pulses) ^ 077777;
-        }
-        // FIXME: Figure out why I need to force a stop to prevent restarts...
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 2));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_PIPAX + (RegPIPA - RegPIPAX), pulses));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 0));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_PROCEED, 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 0));
-    }
+	if (agc_bridge) {
+		agc_bridge->halt();
+		agc_bridge->pulse_pipa(RegPIPA, pulses);
+		agc_bridge->resume();
+	}
 }
 
 //
@@ -510,12 +504,11 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 	// Now load the data.
 	//
 
-    if (agc_bridge) {
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, MON_STOP_T12));
-    }
+	if (agc_bridge) {
+		agc_bridge->halt();
+	}
 
-    int last_emem = -1;
+	int last_emem = -1;
 	while (oapiReadScenario_nextline (scn, line)) {
 		if (!strnicmp(line, AGC_END_STRING, sizeof(AGC_END_STRING)))
 			break;
@@ -525,13 +518,13 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 			sscanf(line+4, "%o", &num);
 			sscanf(line+9, "%o", &val);
 			WriteMemory(num, val);
-            if (agc_bridge) {
-                for (int i = last_emem + 1; i < num; i++) {
-                    agc_bridge->send_message(MonitorMessage(MON_GROUP_ERASABLE, i, 0));
-                }
-                last_emem = num;
-                agc_bridge->send_message(MonitorMessage(MON_GROUP_ERASABLE, num, val << 1));
-            }
+			if (agc_bridge) {
+				for (int i = last_emem + 1; i < num; i++) {
+					agc_bridge->set_erasable(i / 256, i % 256, 0);
+				}
+				last_emem = num;
+				agc_bridge->set_erasable(num / 256, num % 256, val);
+			}
 		}
 		else if (!strnicmp (line, "VICHAN", 6)) {
 			int num;
@@ -539,10 +532,9 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 			sscanf(line+6, "%d", &num);
 			sscanf(line+10, "%d", &val);
 			vagc.InputChannel[num] = val;
-            if (agc_bridge && (num >= 030) && (num <= 033)) {
-                agc_bridge->channels[num - 030] = val;
-                agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, num - 030, 0x8000 | val));
-            }
+			if (agc_bridge && (num >= 030) && (num <= 033)) {
+				agc_bridge->set_input_channel(num, val);
+			}
 		}
 		else if (!strnicmp (line, "V10CHAN", 7)) {
 			int num;
@@ -557,9 +549,9 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 			sscanf(line+5, "%d", &num);
 			sscanf(line+9, "%d", &val);
 			OutputChannel[num] = val;
-            if (agc_bridge) {
-                agc_bridge->send_message(MonitorMessage(MON_GROUP_CHANNELS, num, ((val << 1) & 0x8000) | val));
-            }
+			if (agc_bridge) {
+				agc_bridge->set_output_channel(num, val);
+			}
 		}
 		else if (!strnicmp (line, "VOC7", 4)) {
 			sscanf (line+4, "%" SCNd16, &vagc.OutputChannel7);
@@ -630,20 +622,17 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 		else if (!strnicmp (line, "ONAME", 5)) {
 			strncpy (OtherVesselName, line + 6, 64);
 		}
+		else if (!strnicmp(line, "HARDWARE", 8)) {
+			agc_bridge = new AGCBridge(line + 9, this);
+		}
 
 		papiReadScenario_bool(line, "PROGALARM", ProgAlarm);
 		papiReadScenario_bool(line, "GIMBALLOCKALARM", GimbalLockAlarm);
 	}
 
-    if (agc_bridge) {
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 0));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_START, 1));
-        //agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 0, 0));
-        //agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 1, 0));
-        //agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 2, 0));
-        //agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 3, 0));
-        agc_bridge->halted = true;
-    }
+	if (agc_bridge) {
+		agc_bridge->restart();
+	}
 }
 
 //
@@ -724,14 +713,9 @@ void ApolloGuidance::SetInputChannel(int channel, ChannelValue val)
 
 		WriteIO(&vagc, channel, val.to_ulong());
 
-        if (agc_bridge) {
-            if (channel == 015) {
-                agc_bridge->send_message(MonitorMessage(0x23, 0x0009, val.to_ulong()));
-            } else if ((channel >= 030) && (channel <= 033)) {
-                agc_bridge->channels[channel - 030] = val.to_ulong();
-                agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | val.to_ulong()));
-            }
-        }
+		if (agc_bridge) {
+			agc_bridge->set_input_channel(channel, val.to_ulong());
+		}
 	}
 }
 
@@ -739,12 +723,12 @@ void ApolloGuidance::SetInputChannelBit(int channel, int bit, bool val)
 
 {
 	unsigned int mask = (1 << (bit));
-    int	data;
-    if (agc_bridge && (channel >= 030 && channel <= 033)) {
-        data = agc_bridge->channels[channel - 030];
-    } else {
-        data = vagc.InputChannel[channel];
-    }
+	int	data;
+	if (agc_bridge) {
+		data = agc_bridge->get_channel_value(channel);
+	} else {
+		data = vagc.InputChannel[channel];
+	}
 
 	//
 	// Channels 030-034 are inverted!
@@ -789,11 +773,9 @@ void ApolloGuidance::SetInputChannelBit(int channel, int bit, bool val)
 
 	WriteIO(&vagc, channel, data);
 
-    if (agc_bridge && (channel >= 030) && (channel <= 033)) {
-        agc_bridge->channels[channel - 030] = data;
-        //if (channel == 032 && bit == Proceed) agc_bridge->send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_PROCEED, 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | data));
-    }
+	if (agc_bridge) {
+		agc_bridge->set_input_channel(channel, data);
+	}
 }
 
 void ApolloGuidance::SetOutputChannel(int channel, ChannelValue val)
@@ -999,20 +981,12 @@ unsigned int ApolloGuidance::GetInputChannel(int channel)
 	// 0 = false, 1 = true form.
 	//
 
-    unsigned int val;
-    if (agc_bridge) {
-        if ((channel >= 030) && (channel <= 033)) {
-            val = agc_bridge->channels[channel - 030];
-        } else if (channel == 012) {
-            val = agc_bridge->chan12;
-        } else if (channel == 013) {
-            val = agc_bridge->chan13;
-        } else {
-            val = vagc.InputChannel[channel];
-        }
-    } else {
-        val = vagc.InputChannel[channel];
-    }
+	unsigned int val;
+	if (agc_bridge) {
+		val = agc_bridge->get_channel_value(channel);
+	} else {
+		val = vagc.InputChannel[channel];
+	}
 	
 	if ((channel >= 030) && (channel <= 034))
 		val ^= 077777;

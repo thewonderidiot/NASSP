@@ -29,19 +29,30 @@
 
 AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
     FT_STATUS status;
+	char ser[20];
 
     agc = guidance;
     read_buf_len = 0;
     halted = false;
-    for (uint8_t i = 0; i < 4; i++) {
-        channels[i] = 077777;
+    for (uint8_t i = 0; i < 0100; i++) {
+        if (i >= 030 && i <= 033) {
+            channels[i] = 077777;
+        } else {
+            channels[i] = 0;
+        }
     }
-    chan12 = 0;
-    chan13 = 0;
 
     mon_log.open("monitor.log", std::ios::out | std::ios::trunc);
 
-    status = FT_OpenEx(serial, FT_OPEN_BY_SERIAL_NUMBER, &mon_handle);
+	strncpy(ser, serial, 20);
+	for (int i = 0; i < 20; i++) {
+		if (ser[i] == '\n' || ser[i] == '\r') {
+			ser[i] = 0;
+			break;
+		}
+	}
+
+    status = FT_OpenEx(ser, FT_OPEN_BY_SERIAL_NUMBER, &mon_handle);
     if (status != FT_OK)
     {
         mon_log << "Failed to open monitor, RC=" << status << std::endl;
@@ -81,8 +92,7 @@ void AGCBridge::service(double simt) {
     }
 
     if (halted) {
-        send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_PROCEED, 1));
-        send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 0));
+		resume();
     }
 
     send_message(MonitorMessage(MON_GROUP_MON_CHAN, 005));
@@ -96,6 +106,55 @@ void AGCBridge::service(double simt) {
     send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_ALTM));
     send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_STATUS));
     read_messages();
+}
+
+void AGCBridge::halt() {
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 1));
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, MON_STOP_NISQ));
+	halted = true;
+}
+
+void AGCBridge::resume() {
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 0));
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_PROCEED, 1));
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 0));
+	halted = false;
+}
+
+void AGCBridge::restart() {
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_START, 1));
+}
+
+void AGCBridge::set_erasable(int bank, int address, int value) {
+	// FIXME: Figure out why I need to force a stop to prevent restarts...
+	send_message(MonitorMessage(MON_GROUP_ERASABLE, bank * 256 + address, value << 1));
+}
+
+void AGCBridge::pulse_pipa(int reg_pipa, int pulses) {
+    if (pulses < 0) {
+        pulses = (-pulses) ^ 077777;
+    }
+    // FIXME: Figure out why I need to force a stop to prevent restarts...
+    send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_PIPAX + (reg_pipa - RegPIPAX), pulses));
+}
+
+void AGCBridge::set_input_channel(int channel, int value) {
+	channels[channel] = value;
+
+    if (channel == 015) {
+        send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_BUTTON, value));
+    } else if ((channel >= 030) && (channel <= 033)) {
+        send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | value));
+	}
+}
+
+void AGCBridge::set_output_channel(int channel, int value) {
+	channels[channel] = value;
+	send_message(MonitorMessage(MON_GROUP_CHANNELS, channel, ((value << 1) & 0x8000) | value));
+}
+
+int AGCBridge::get_channel_value(int channel) {
+	return channels[channel];
 }
 
 void AGCBridge::send_message(MonitorMessage &msg) {
@@ -160,12 +219,8 @@ void AGCBridge::read_messages() {
 void AGCBridge::handle_message(MonitorMessage &msg) {
     switch (msg.group) {
     case MON_GROUP_MON_CHAN:
+		channels[msg.address] = msg.data;
         agc->SetOutputChannel(msg.address, msg.data);
-        if (msg.address == 012) {
-            chan12 = msg.data;
-        } else if (msg.address == 013) {
-            chan13 = msg.data;
-        }
         break;
 
     case MON_GROUP_DSKY:
@@ -185,11 +240,11 @@ void AGCBridge::handle_message(MonitorMessage &msg) {
             if (v[15]) {
                 ch163[Ch163FlashVerbNoun] = dsky_flash;
             }
-            agc->ProcessChannel163(ch163);
+            agc->SetOutputChannel(0163, ch163);
 
             ch11[LightComputerActivity] = v[14];
             ch11[LightUplink] = v[13];
-            agc->ProcessChannel11(ch11);
+            agc->SetOutputChannel(011, ch11);
             break;
         }
         break;

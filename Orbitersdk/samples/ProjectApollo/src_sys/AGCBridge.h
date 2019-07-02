@@ -56,7 +56,7 @@
 #define MON_NASSP_THRUST 0x0007
 #define MON_NASSP_ALTM   0x0008
 
-#define MON_STOP_T12 0x0001
+#define MON_STOP_NISQ 0x0002
 
 class ApolloGuidance;
 
@@ -85,15 +85,18 @@ class AGCBridge {
 public:
     AGCBridge(char *serial, ApolloGuidance *guidance);
     ~AGCBridge();
-    void send_message(MonitorMessage &msg);
+	void halt();
+	void resume();
+	void restart();
+    void set_erasable(int bank, int address, int value);
+    void set_input_channel(int channel, int value);
+    void set_output_channel(int channel, int value);
+	int get_channel_value(int channel);
+    void pulse_pipa(int reg_pipa, int pulses);
     void service(double simt);
 
-    uint16_t channels[4];
-    uint16_t chan12;
-    uint16_t chan13;
-    boolean halted;
-
 private:
+	void send_message(MonitorMessage &msg);
     void read_messages();
     void handle_message(MonitorMessage &msg);
     boolean unslip_message(uint8_t *buf, uint16_t length, MonitorMessage *msg, uint16_t *bytes_used);
@@ -106,6 +109,8 @@ private:
     uint16_t read_buf_len;
     boolean dsky_flash;
     double dsky_flash_t;
+	uint16_t channels[0100];
+	boolean halted;
 };
 
 #endif // _PA_AGCBRIDGE_H
