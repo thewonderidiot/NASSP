@@ -32,9 +32,12 @@ AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
 
     agc = guidance;
     read_buf_len = 0;
+    halted = false;
     for (uint8_t i = 0; i < 4; i++) {
         channels[i] = 077777;
     }
+    chan12 = 0;
+    chan13 = 0;
 
     mon_log.open("monitor.log", std::ios::out | std::ios::trunc);
 
@@ -47,11 +50,11 @@ AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
 
     mon_log << "Monitor connected!" << std::endl;
 
-    FT_SetTimeouts(mon_handle, 5, 5);
+    FT_SetTimeouts(mon_handle, 1, 1);
     FT_SetBitMode(mon_handle, 0xFF, 0x00);
     FT_SetBitMode(mon_handle, 0xFF, 0x40);
-    FT_SetUSBParameters(mon_handle, 64*1024, 64*1024);
-    FT_SetLatencyTimer(mon_handle, 5);
+    FT_SetUSBParameters(mon_handle, 128, 128);
+    FT_SetLatencyTimer(mon_handle, 2);
     FT_SetFlowControl(mon_handle, FT_FLOW_RTS_CTS, 0, 0);
     FT_Purge(mon_handle, FT_PURGE_RX);
     FT_Purge(mon_handle, FT_PURGE_TX);
@@ -77,6 +80,11 @@ void AGCBridge::service(double simt) {
         dsky_flash_t = simt;
     }
 
+    if (halted) {
+        send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_PROCEED, 1));
+        send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 0));
+    }
+
     send_message(MonitorMessage(MON_GROUP_MON_CHAN, 005));
     send_message(MonitorMessage(MON_GROUP_MON_CHAN, 006));
     send_message(MonitorMessage(MON_GROUP_MON_CHAN, 010));
@@ -84,6 +92,8 @@ void AGCBridge::service(double simt) {
     send_message(MonitorMessage(MON_GROUP_MON_CHAN, 012));
     send_message(MonitorMessage(MON_GROUP_MON_CHAN, 013));
     send_message(MonitorMessage(MON_GROUP_MON_CHAN, 014));
+    send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_THRUST));
+    send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_ALTM));
     send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_STATUS));
     read_messages();
 }
@@ -151,6 +161,11 @@ void AGCBridge::handle_message(MonitorMessage &msg) {
     switch (msg.group) {
     case MON_GROUP_MON_CHAN:
         agc->SetOutputChannel(msg.address, msg.data);
+        if (msg.address == 012) {
+            chan12 = msg.data;
+        } else if (msg.address == 013) {
+            chan13 = msg.data;
+        }
         break;
 
     case MON_GROUP_DSKY:
@@ -178,6 +193,17 @@ void AGCBridge::handle_message(MonitorMessage &msg) {
             break;
         }
         break;
+
+    case MON_GROUP_NASSP:
+        if (msg.address == MON_NASSP_THRUST) {
+            if ((msg.data & 0x8000) && ((msg.data & 077777) != 077777)) {
+                agc->SetOutputChannel(0142, msg.data & 077777);
+            }
+        } else if (msg.address == MON_NASSP_ALTM) {
+            if (msg.data & 0x8000) {
+                agc->SetOutputChannel(0143, msg.data & 077777);
+            }
+        }
     }
 
 }

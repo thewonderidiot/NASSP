@@ -310,12 +310,6 @@ void ApolloGuidance::PulsePIPA(int RegPIPA, int pulses)
 
 	Lock lock(agcCycleMutex);
 
-    /*if (pulses > 0) {
-        SetErasable(0, RegPIPA, pulses);
-    } else {
-        SetErasable(0, RegPIPA, (-pulses) ^ 077777);
-    }*/
-
 	if (pulses >= 0) {
     	for (i = 0; i < pulses; i++) {
 			UnprogrammedIncrement(&vagc, RegPIPA, 0);	// PINC
@@ -327,6 +321,18 @@ void ApolloGuidance::PulsePIPA(int RegPIPA, int pulses)
     	}
 	}
 
+    if (agc_bridge) {
+        if (pulses < 0) {
+            pulses = (-pulses) ^ 077777;
+        }
+        // FIXME: Figure out why I need to force a stop to prevent restarts...
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 1));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 2));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_PIPAX + (RegPIPA - RegPIPAX), pulses));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 0));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_PROCEED, 1));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 0));
+    }
 }
 
 //
@@ -632,12 +638,11 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
     if (agc_bridge) {
         agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_STOP, 0));
         agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_START, 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_PROCEED, 1));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_NHALGA, 0));
         //agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 0, 0));
         //agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 1, 0));
-        agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 2, 0));
+        //agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 2, 0));
         //agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, 3, 0));
+        agc_bridge->halted = true;
     }
 }
 
@@ -724,7 +729,7 @@ void ApolloGuidance::SetInputChannel(int channel, ChannelValue val)
                 agc_bridge->send_message(MonitorMessage(0x23, 0x0009, val.to_ulong()));
             } else if ((channel >= 030) && (channel <= 033)) {
                 agc_bridge->channels[channel - 030] = val.to_ulong();
-                if (channel != 032) agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | val.to_ulong()));
+                agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | val.to_ulong()));
             }
         }
 	}
@@ -786,7 +791,8 @@ void ApolloGuidance::SetInputChannelBit(int channel, int bit, bool val)
 
     if (agc_bridge && (channel >= 030) && (channel <= 033)) {
         agc_bridge->channels[channel - 030] = data;
-        if (channel != 032) agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | data));
+        //if (channel == 032 && bit == Proceed) agc_bridge->send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_PROCEED, 1));
+        agc_bridge->send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | data));
     }
 }
 
@@ -994,8 +1000,16 @@ unsigned int ApolloGuidance::GetInputChannel(int channel)
 	//
 
     unsigned int val;
-    if (agc_bridge && (channel >= 030) && (channel <= 033)) {
-        val = agc_bridge->channels[channel - 030];
+    if (agc_bridge) {
+        if ((channel >= 030) && (channel <= 033)) {
+            val = agc_bridge->channels[channel - 030];
+        } else if (channel == 012) {
+            val = agc_bridge->chan12;
+        } else if (channel == 013) {
+            val = agc_bridge->chan13;
+        } else {
+            val = vagc.InputChannel[channel];
+        }
     } else {
         val = vagc.InputChannel[channel];
     }

@@ -52,6 +52,10 @@
 #define MON_DSKY_PROCEED 0x000A
 #define MON_DSKY_STATUS  0x000B
 
+#define MON_NASSP_PIPAX  0x0004
+#define MON_NASSP_THRUST 0x0007
+#define MON_NASSP_ALTM   0x0008
+
 #define MON_STOP_T12 0x0001
 
 class ApolloGuidance;
@@ -85,6 +89,9 @@ public:
     void service(double simt);
 
     uint16_t channels[4];
+    uint16_t chan12;
+    uint16_t chan13;
+    boolean halted;
 
 private:
     void read_messages();
