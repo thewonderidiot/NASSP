@@ -40,6 +40,8 @@
 #include "csmcomputer.h"
 #include "saturn.h"
 #include "papi.h"
+#include "IUUmbilical.h"
+#include "IU_ESE.h"
 
 HINSTANCE g_hDLL;
 char trace_file[] = "ProjectApollo ML.log";
@@ -136,9 +138,14 @@ ML::ML(OBJHANDLE hObj, int fmodel) : VESSEL2 (hObj, fmodel) {
 	soundlib.InitSoundLib(hObj, SOUND_DIRECTORY);
 
 	sat = NULL;
+
+	IuUmb = new IUUmbilical(this);
+	IuESE = new IUSV_ESE(IuUmb);
 }
 
 ML::~ML() {
+	delete IuUmb;
+	delete IuESE;
 }
 
 void ML::clbkSetClassCaps(FILEHANDLE cfg) {
@@ -163,8 +170,27 @@ void ML::clbkSetClassCaps(FILEHANDLE cfg) {
 	SetTouchdownPointHeight(touchdownPointHeight);
 }
 
-void ML::clbkPostCreation() {
-	
+void ML::clbkPostCreation()
+{	
+	char buffer[256];
+
+	if (swingarmProc == 0.0)
+	{
+		double vcount = oapiGetVesselCount();
+		for (int i = 0; i < vcount; i++) {
+			OBJHANDLE h = oapiGetVesselByIndex(i);
+			oapiGetObjectName(h, buffer, 256);
+			if (!strcmp(LVName, buffer)) {
+				hLV = h;
+				Saturn *sat = (Saturn *)oapiGetVesselInterface(hLV);
+				if (sat->GetStage() < LAUNCH_STAGE_ONE)
+				{
+					IuUmb->Connect(sat->GetIU());
+				}
+			}
+		}
+	}
+
 	SetAnimation(craneAnim, craneProc);
 	SetAnimation(cmarmAnim, cmarmProc);
 	SetAnimation(s1cintertankarmAnim, s1cintertankarmProc);
@@ -362,7 +388,6 @@ void ML::clbkPreStep(double simt, double simdt, double mjd) {
 			SetAnimation(s1cforwardarmAnim, s1cforwardarmProc);
 		}
 
-		// T-4.9s or later?
 		if (!hLV) break;
 		sat = (Saturn *) oapiGetVesselInterface(hLV);
 
@@ -396,6 +421,7 @@ void ML::clbkPreStep(double simt, double simdt, double mjd) {
 				sat->SetSIEngineStart(4);
 			}
 
+			// T-4.9s or later?
 			if (sat->GetMissionTime() > -4.9) {
 				s1cforwardarmProc = 1;
 				SetAnimation(s1cforwardarmAnim, s1cforwardarmProc);
@@ -418,9 +444,18 @@ void ML::clbkPreStep(double simt, double simdt, double mjd) {
 		{
 			sat->SIGSECutoff(true);
 		}
-		else if (sat->GetMissionTime() > -1) {
-			state = STATE_LIFTOFF;
+		else
+		{
+			//Hold-down force
+			if (sat->GetMissionTime() > -4.0) {
+				sat->AddForce(_V(0, 0, -5. * sat->GetFirstStageThrust()), _V(0, 0, 0));
+			}
+
+			if (sat->GetMissionTime() > -1) {
+				state = STATE_LIFTOFF;
+			}
 		}
+
 		break;
 	
 	case STATE_LIFTOFF:
@@ -448,8 +483,21 @@ void ML::clbkPreStep(double simt, double simdt, double mjd) {
 		}
 		else
 		{
+			// Soft-Release Pin Dragging
+			if (sat->GetMissionTime() < 0.5)
+			{
+				double PinDragFactor = min(1.0, 1.0 - (sat->GetMissionTime() * 2.0));
+				sat->AddForce(_V(0, 0, -(sat->GetFirstStageThrust() * PinDragFactor)), _V(0, 0, 0));
+			}
+
 			if (Commit()) {
-				sat->SetIUUmbilicalState(false);
+				IuUmb->Disconnect();
+			}
+
+			//Cutoff
+			if (sat->GetMissionTime() > 6.0 && sat->GetStage() <= PRELAUNCH_STAGE)
+			{
+				sat->SIGSECutoff(true);
 			}
 
 			// T+8s or later?
@@ -474,8 +522,15 @@ void ML::clbkPreStep(double simt, double simdt, double mjd) {
 			// using it again. This prevents a crash if we later delete the vessel.
 			//
 			hLV = 0;
+			sat = 0;
 		}
 		break;
+	}
+
+	//IU ESE
+	if (sat)
+	{
+		IuESE->Timestep(sat->GetMissionTime(), simdt);
 	}
 
 	// sprintf(oapiDebugString(), "Dist %f", GetDistanceTo(VAB_LON, VAB_LAT));
@@ -554,24 +609,8 @@ void ML::clbkPostStep (double simt, double simdt, double mjd) {
 	}
 }
 
-void ML::DoFirstTimestep() {
-
-	char buffer[256];
-
-	double vcount = oapiGetVesselCount();
-	for (int i = 0; i < vcount; i++)	{
-		OBJHANDLE h = oapiGetVesselByIndex(i);
-		oapiGetObjectName(h, buffer, 256);
-		if (!strcmp(LVName, buffer)){
-			hLV = h;
-			Saturn *sat = (Saturn *)oapiGetVesselInterface(hLV);
-			if (sat->GetMissionTime() < 0)
-			{
-				sat->SetIUUmbilicalState(true);
-			}
-		}
-	}
-
+void ML::DoFirstTimestep()
+{
 	soundlib.SoundOptionOnOff(PLAYCOUNTDOWNWHENTAKEOFF, FALSE);
 	soundlib.SoundOptionOnOff(PLAYCABINAIRCONDITIONING, FALSE);
 	soundlib.SoundOptionOnOff(PLAYCABINRANDOMAMBIANCE, FALSE);
@@ -873,4 +912,64 @@ bool ML::Commit()
 {
 	if (!sat) return false;
 	return sat->AllSIEnginesRunning() && sat->GetMissionTime() >= -0.05 && !CutoffInterlock();
+}
+
+bool ML::ESEGetCommandVehicleLiftoffIndicationInhibit()
+{
+	return IuESE->GetCommandVehicleLiftoffIndicationInhibit();
+}
+
+bool ML::ESEGetSICOutboardEnginesCantInhibit()
+{
+	return IuESE->GetSICOutboardEnginesCantInhibit();
+}
+
+bool ML::ESEGetAutoAbortInhibit()
+{
+	return IuESE->GetAutoAbortInhibit();
+}
+
+bool ML::ESEGetGSEOverrateSimulate()
+{
+	return IuESE->GetOverrateSimulate();
+}
+
+bool ML::ESEGetEDSPowerInhibit()
+{
+	return IuESE->GetEDSPowerInhibit();
+}
+
+bool ML::ESEPadAbortRequest()
+{
+	return IuESE->GetEDSPadAbortRequest();
+}
+
+bool ML::ESEGetThrustOKIndicateEnableInhibitA()
+{
+	return IuESE->GetThrustOKIndicateEnableInhibitA();
+}
+
+bool ML::ESEGetThrustOKIndicateEnableInhibitB()
+{
+	return IuESE->GetThrustOKIndicateEnableInhibitB();
+}
+
+bool ML::ESEEDSLiftoffInhibitA()
+{
+	return IuESE->GetEDSLiftoffInhibitA();
+}
+
+bool ML::ESEEDSLiftoffInhibitB()
+{
+	return IuESE->GetEDSLiftoffInhibitB();
+}
+
+bool ML::ESEAutoAbortSimulate()
+{
+	return IuESE->GetAutoAbortSimulate();
+}
+
+bool ML::ESEGetSIBurnModeSubstitute()
+{
+	return IuESE->GetSIBurnModeSubstitute();
 }

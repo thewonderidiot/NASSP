@@ -1,8 +1,8 @@
 /***************************************************************************
 This file is part of Project Apollo - NASSP
-Copyright 2017-2019
+Copyright 2019
 
-Flight Control Computer (Header)
+IU Auxiliary Power Distributors 601A33, 602A34 (Header)
 
 Project Apollo is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -26,54 +26,41 @@ See http://nassp.sourceforge.net/license/ for more details.
 
 class IU;
 
-class FCC
+//601A33
+class IUAuxiliaryPowerDistributor1
 {
 public:
-	FCC(IU *iu);
-	virtual ~FCC() {}
-	virtual void Timestep(double simdt) = 0;
-
-	void SaveState(FILEHANDLE scn, char *start_str, char *end_str);
-	void LoadState(FILEHANDLE scn, char *end_str);
-
-	void SetAttitudeError(VECTOR3 atterr) { LVDCAttitudeError = atterr; }
+	IUAuxiliaryPowerDistributor1(IU *iu);
+	void Timestep(double simdt);
+	
+	void CommandPowerTransferInternal() { CommandPowerTransfer = true; }
+	void CommandPowerTransferExternal() { CommandPowerTransfer = false; }
 protected:
-	//K1-1/2
-	bool SIBurnMode;
-	//K2
-	bool SIVBBurnMode;
-	//K35/K37
-	bool SCControlEnableRelay;
-
-	double a_0p, a_0y, a_0r;
-	double a_1p, a_1y, a_1r;
-	double beta_pc, beta_yc, beta_rc;
-	double beta_y1c, beta_y2c, beta_y3c, beta_y4c;
-	double beta_p1c, beta_p2c, beta_p3c, beta_p4c;
-	double eps_p, eps_ymr, eps_ypr;
-
-	VECTOR3 LVDCAttitudeError;
+	//K1
+	bool MotorSwitchLogic;
+	//K8
+	bool CommandPowerTransfer;
 
 	IU *iu;
 };
 
-class FCC1B : public FCC
+//602A34
+class IUAuxiliaryPowerDistributor2
 {
 public:
-	FCC1B(IU *iu);
+	IUAuxiliaryPowerDistributor2(IU *iu);
 	void Timestep(double simdt);
+
+	bool IsIUEDSBusPowered() { return (EDSBus1PowerOff == false); }
+protected:
+
+	//K18 (K116)
+	bool EDSBus1PowerOff;
+	//K15 (K117)
+	bool EDSBus2PowerOff;
+	//K13 (K118)
+	bool EDSBus3PowerOff;
+
+	IU *iu;
 };
 
-class FCCSV : public FCC
-{
-public:
-	FCCSV(IU *iu);
-	void Timestep(double simdt);
-protected:
-	//K2-1/2
-	bool SIIBurnMode;
-	//K4
-	bool SICOrSIIBurnMode;
-	bool UseSICEngineCant;
-	double SICCant;
-};

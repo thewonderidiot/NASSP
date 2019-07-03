@@ -827,6 +827,7 @@ void Saturn::initSaturn()
 
 	SIISepState = false;
 	bRecovery = false;
+	DontDeleteIU = false;
 
 	stage = 0;
 
@@ -1953,6 +1954,18 @@ bool Saturn::ProcessConfigFileLine(FILEHANDLE scn, char *line)
 	}
 	else if (!strnicmp(line, "LAUNCHFAIL", 10)) {
 		sscanf(line + 10, "%d", &LaunchFail.word);
+
+		if (stage < CSM_LEM_STAGE)
+		{
+			if (LaunchFail.LiftoffSignalAFail)
+			{
+				iu->GetEDS()->SetLiftoffCircuitAFailure();
+			}
+			if (LaunchFail.LiftoffSignalBFail)
+			{
+				iu->GetEDS()->SetLiftoffCircuitBFailure();
+			}
+		}
 	}
 	else if (!strnicmp(line, "SWITCHCHFAIL", 10)) {
 		sscanf(line + 10, "%d", &SwitchFail.word);
@@ -2088,6 +2101,8 @@ bool Saturn::ProcessConfigFileLine(FILEHANDLE scn, char *line)
 		}
 		else if (!strnicmp (line, "STAGE", 5)) {
 			sscanf (line+5, "%d", &stage);
+
+			CreateStageSpecificSystems();
 		}
 		else if (!strnicmp (line, "MAXTIMEACC", 10)) {
 			sscanf (line+10, "%d", &maxTimeAcceleration);
@@ -2569,6 +2584,7 @@ void Saturn::SetStage(int s)
 	StageState = 0;
 
 	CheckSMSystemsState();
+	CheckSIVBSystemsState();
 	
 	//
 	// Event management
@@ -2597,10 +2613,10 @@ void Saturn::SetStage(int s)
 	}
 
 	//
-	// CSM/LV separation
+	// CSM/LV separation or Mode I abort
 	//
 
-	if (stage == CSM_LEM_STAGE) {
+	if (stage >= CSM_LEM_STAGE) {
 
 		soundlib.SoundOptionOnOff(PLAYWHENATTITUDEMODECHANGE, TRUE);
 		ClearTLISounds();
@@ -3839,6 +3855,11 @@ void Saturn::GenericLoadStateSetup()
 	soundlib.SoundOptionOnOff(PLAYDOCKINGSOUND, FALSE);
 
 	//
+	// Check S-IVB devices.
+	//
+	CheckSIVBSystemsState();
+
+	//
 	// Initialize the IU
 	//
 
@@ -4557,6 +4578,13 @@ bool Saturn::GetSIVBThrustOK()
 	return sivb->GetThrustOK();
 }
 
+double Saturn::GetFirstStageThrust()
+{
+	if (stage > PRELAUNCH_STAGE) return 0.0;
+
+	return THRUST_FIRST_VAC;
+}
+
 double Saturn::GetSIVBFuelTankPressurePSI()
 {
 	if (sivb && stage < CSM_LEM_STAGE)
@@ -4605,21 +4633,6 @@ void Saturn::SIVBEDSCutoff(bool cut)
 void Saturn::SetQBallPowerOff()
 {
 	qball.SetPowerOff();
-}
-
-void Saturn::SetIUUmbilicalState(bool connect)
-{
-	if (stage <= PRELAUNCH_STAGE && iu)
-	{
-		if (connect)
-		{
-			iu->ConnectUmbilical();
-		}
-		else
-		{
-			iu->DisconnectUmbilical();
-		}
-	}
 }
 
 void Saturn::SetAPSAttitudeEngine(int n, bool on)

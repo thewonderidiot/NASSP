@@ -440,14 +440,6 @@ void ApolloGuidance::SaveState(FILEHANDLE scn)
 	// And non-zero I/O state.
 	//
 
-	for (i = 0; i < MAX_INPUT_CHANNELS; i++) {
-		val = GetInputChannel(i);
-		if (val != 0) {
-			sprintf(fname, "ICHAN%03d", i);
-			oapiWriteScenario_int (scn, fname, val);
-		}
-	}
-
 	for (i = 0; i < MAX_OUTPUT_CHANNELS; i++) {
 		val = GetOutputChannel(i);
 		if (val != 0) {
@@ -455,7 +447,6 @@ void ApolloGuidance::SaveState(FILEHANDLE scn)
 			oapiWriteScenario_int (scn, fname, val);
 		}
 	}
-
 
 	for (i = 0; i < NUM_CHANNELS; i++) {
 		val = vagc.InputChannel[i];

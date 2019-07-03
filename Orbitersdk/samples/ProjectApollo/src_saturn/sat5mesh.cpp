@@ -441,10 +441,11 @@ void SaturnV::SetFirstStage ()
 
     SetSize (59.5);
 	SetEmptyMass (EmptyMass);
-	SetPMI (_V(1147,1147,116.60));
+	//440 is average value for pitch/yaw axis, 5.875 is highest value for roll axis (at cutoff). Could use some refining later.
+	SetPMI(_V(440.0, 440.0, 5.875));
 	SetCrossSections (_V(1129,1133,52.4));
 	SetCW (0.1, 0.3, 1.4, 1.4);
-	SetRotDrag (_V(0.7,0.7,1.2));
+	SetRotDrag(_V(0.7, 0.7, 0.1));
 	SetPitchMomentScale (0);
 	SetYawMomentScale (0);
 	SetLiftCoeffFunc (0);
@@ -985,8 +986,8 @@ void SaturnV::SetThirdStageEngines (double offset)
 	VECTOR3	u_exhaust_pos6= _V(3.6, -0.425, -3.6 + offset);
 	VECTOR3 u_exhaust_pos7= _V(-3.6, 0.925, -3.6 + offset);
 
-	th_ver[0] = CreateThruster(u_exhaust_pos6, _V(-0.4, 0.0, 1), 15079.47, ph_ullage3, 2188.1);
-	th_ver[1] = CreateThruster(u_exhaust_pos7, _V(0.4, 0.0, 1), 15079.47, ph_ullage3, 2188.1);
+	th_ver[0] = CreateThruster(u_exhaust_pos6, _V(-0.368829, 0.043542, 0.928477), 15079.47, ph_ullage3, 2188.1);
+	th_ver[1] = CreateThruster(u_exhaust_pos7, _V(0.359706, -0.092425, 0.928477), 15079.47, ph_ullage3, 2188.1);
 
 	for (int i = 0; i < 2; i++)
 		AddExhaust (th_ver[i], 5.0, 0.25, exhaust_tex);

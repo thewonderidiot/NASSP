@@ -39,24 +39,33 @@
 
 #include "saturn.h"
 #include "papi.h"
-#include "LVDC.h"
+#include "IUUmbilical.h"
 
 #include "iu.h"
 
 
 IU::IU() :
-dcs(this)
+dcs(this),
+AuxiliaryPowerDistributor1(this),
+AuxiliaryPowerDistributor2(this)
 {
 	State = 0;
-	NextMissionEventTime = MINUS_INFINITY;
-	LastMissionEventTime = MINUS_INFINITY;
-	UmbilicalConnected = false;
+	MissionTime = 0.0;
 
 	Crewed = true;
 	SCControlPoweredFlight = false;
 
 	commandConnector.SetIU(this);
-	lvdc = NULL;
+
+	IuUmb = NULL;
+}
+
+IU::~IU()
+{
+	if (IuUmb)
+	{
+		IuUmb->AbortDisconnect();
+	}
 }
 
 void IU::SetMissionInfo(bool crewed, bool sccontpowered)
@@ -72,16 +81,22 @@ void IU::Timestep(double misst, double simt, double simdt, double mjd)
 	//
 	MissionTime = misst;
 
+	AuxiliaryPowerDistributor1.Timestep(simdt);
+	AuxiliaryPowerDistributor2.Timestep(simdt);
+
 	//Set the launch stage here
-	if (!UmbilicalConnected && lvCommandConnector.GetStage() == PRELAUNCH_STAGE)
+	if (!IsUmbilicalConnected() && lvCommandConnector.GetStage() == PRELAUNCH_STAGE)
 	{
 		lvCommandConnector.SetStage(LAUNCH_STAGE_ONE);
 	}
 
-	if (lvdc == NULL) return;
-
 	lvimu.Timestep(mjd);
 	lvrg.Timestep(simdt);
+
+	if (GetControlDistributor()->GetGSECommandVehicleLiftoffIndicationInhibit() == false)
+	{
+		GetEngineCutoffEnableTimer()->SetRunning(true);
+	}
 }
 
 void IU::PostStep(double simt, double simdt, double mjd) {
@@ -94,12 +109,9 @@ void IU::SaveState(FILEHANDLE scn)
 	oapiWriteLine(scn, IU_START_STRING);
 
 	oapiWriteScenario_int(scn, "STATE", State);
-	papiWriteScenario_bool(scn, "UMBILICALCONNECTED", UmbilicalConnected);
-	papiWriteScenario_double(scn, "NEXTMISSIONEVENTTIME", NextMissionEventTime);
-	papiWriteScenario_double(scn, "LASTMISSIONEVENTTIME", LastMissionEventTime);
 
-	SaveFCC(scn);
-	SaveEDS(scn);
+	GetFCC()->SaveState(scn, "FCC_BEGIN", "FCC_END");
+	GetEDS()->SaveState(scn, "EDS_BEGIN", "EDS_END");
 	GetControlDistributor()->SaveState(scn, "CONTROLDISTRIBUTOR_BEGIN", "CONTROLDISTRIBUTOR_END");
 	GetEngineCutoffEnableTimer()->SaveState(scn, "ENGINECUTOFFENABLETIMER_BEGIN", "ENGINECUTOFFENABLETIMER_END");
 	
@@ -116,14 +128,11 @@ void IU::LoadState(FILEHANDLE scn)
 			return;
 
 		papiReadScenario_int(line, "STATE", State);
-		papiReadScenario_bool(line, "UMBILICALCONNECTED", UmbilicalConnected);
-		papiReadScenario_double(line, "NEXTMISSIONEVENTTIME", NextMissionEventTime);
-		papiReadScenario_double(line, "LASTMISSIONEVENTTIME", LastMissionEventTime);
 		if (!strnicmp(line, "FCC_BEGIN", sizeof("FCC_BEGIN"))) {
-			LoadFCC(scn);
+			GetFCC()->LoadState(scn, "FCC_END");
 		}
 		else if (!strnicmp(line, "EDS_BEGIN", sizeof("EDS_BEGIN"))) {
-			LoadEDS(scn);
+			GetEDS()->LoadState(scn, "EDS_END");
 		}
 		else if (!strnicmp(line, "CONTROLDISTRIBUTOR_BEGIN", sizeof("CONTROLDISTRIBUTOR_BEGIN"))) {
 			GetControlDistributor()->LoadState(scn, "CONTROLDISTRIBUTOR_END");
@@ -194,10 +203,104 @@ bool IU::DCSUplink(int type, void *upl)
 	return dcs.Uplink(type, upl);
 }
 
+bool IU::IsUmbilicalConnected()
+{
+	if (IuUmb && IuUmb->IsIUUmbilicalConnected()) return true;
+
+	return false;
+}
+
+void IU::ConnectUmbilical(IUUmbilical *umb)
+{
+	IuUmb = umb;
+}
+
+void IU::DisconnectUmbilical()
+{
+	IuUmb = NULL;
+}
+
 void IU::DisconnectIU()
 {
 	lvCommandConnector.Disconnect();
 	commandConnector.Disconnect();
+}
+
+bool IU::ESEGetCommandVehicleLiftoffIndicationInhibit()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEGetCommandVehicleLiftoffIndicationInhibit();
+}
+
+bool IU::ESEGetAutoAbortInhibit()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEGetAutoAbortInhibit();
+}
+
+bool IU::ESEGetGSEOverrateSimulate()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEGetGSEOverrateSimulate();
+}
+
+bool IU::ESEGetEDSPowerInhibit()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEGetEDSPowerInhibit();
+}
+
+bool IU::ESEPadAbortRequest()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEPadAbortRequest();
+}
+
+bool IU::ESEGetEngineThrustIndicationEnableInhibitA()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEGetThrustOKIndicateEnableInhibitA();
+}
+
+bool IU::ESEGetEngineThrustIndicationEnableInhibitB()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEGetThrustOKIndicateEnableInhibitB();
+}
+
+bool IU::ESEEDSLiftoffInhibitA()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEEDSLiftoffInhibitA();
+}
+
+bool IU::ESEEDSLiftoffInhibitB()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEEDSLiftoffInhibitB();
+}
+
+bool IU::ESEAutoAbortSimulate()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEAutoAbortSimulate();
+}
+
+bool IU::ESEGetSIBurnModeSubstitute()
+{
+	if (!IsUmbilicalConnected()) return false;
+
+	return IuUmb->ESEGetSIBurnModeSubstitute();
 }
 
 IUToCSMCommandConnector::IUToCSMCommandConnector()
@@ -679,6 +782,13 @@ bool IUToCSMCommandConnector::ReceiveMessage(Connector *from, ConnectorMessage &
 			return true;
 		}
 		break;
+	case CSMIU_GET_ABORT_LIGHT_SIGNAL:
+		if (ourIU)
+		{
+			m.val1.bValue = ourIU->GetEDS()->GetAbortLightSignal();
+			return true;
+		}
+		break;
 	}
 
 	return false;
@@ -784,19 +894,6 @@ void IUToLVCommandConnector::SetQBallPowerOff()
 
 	cm.destination = LV_IU_COMMAND;
 	cm.messageType = IULV_SET_QBALL_POWER_OFF;
-
-	SendMessage(cm);
-}
-
-void IUToLVCommandConnector::AddForce(VECTOR3 F, VECTOR3 r)
-
-{
-	ConnectorMessage cm;
-
-	cm.destination = LV_IU_COMMAND;
-	cm.messageType = IULV_ADD_FORCE;
-	cm.val1.vValue = F;
-	cm.val2.vValue = r;
 
 	SendMessage(cm);
 }
@@ -983,22 +1080,6 @@ double IUToLVCommandConnector::GetJ2ThrustLevel()
 
 	cm.destination = LV_IU_COMMAND;
 	cm.messageType = IULV_GET_J2_THRUST_LEVEL;
-
-	if (SendMessage(cm))
-	{
-		return cm.val1.dValue;
-	}
-
-	return 0.0;
-}
-
-double IUToLVCommandConnector::GetAltitude()
-
-{
-	ConnectorMessage cm;
-
-	cm.destination = LV_IU_COMMAND;
-	cm.messageType = IULV_GET_ALTITUDE;
 
 	if (SendMessage(cm))
 	{
@@ -1256,7 +1337,15 @@ void IUToLVCommandConnector::GetSIIThrustOK(bool *ok)
 	cm.messageType = IULV_GET_SII_THRUST_OK;
 	cm.val1.pValue = ok;
 
-	SendMessage(cm);
+	if (SendMessage(cm))
+	{
+		return;
+	}
+
+	for (int i = 0;i < 5;i++)
+	{
+		ok[i] = false;
+	}
 }
 
 bool IUToLVCommandConnector::GetSIIEngineOut()
@@ -1302,21 +1391,6 @@ bool IUToLVCommandConnector::GetSIVBThrustOK()
 	}
 
 	return false;
-}
-
-double IUToLVCommandConnector::GetFirstStageThrust()
-{
-	ConnectorMessage cm;
-
-	cm.destination = LV_IU_COMMAND;
-	cm.messageType = IULV_GET_FIRST_STAGE_THRUST;
-
-	if (SendMessage(cm))
-	{
-		return cm.val1.dValue;
-	}
-
-	return 0.0;
 }
 
 double IUToLVCommandConnector::GetSIIFuelTankPressurePSI()
@@ -1380,24 +1454,18 @@ bool IUToLVCommandConnector::CSMSeparationSensed()
 }
 
 void IU::SaveLVDC(FILEHANDLE scn) {
-	if (lvdc != NULL) {
-		lvdc->SaveState(scn);
-		lvimu.SaveState(scn);
-	}
+	GetLVDC()->SaveState(scn);
+	lvimu.SaveState(scn);
 }
 
-IU1B::IU1B() : fcc(this), eds(this), ControlDistributor(this), EngineCutoffEnableTimer(40.0)
+IU1B::IU1B() : fcc(this), eds(this), ControlDistributor(this), EngineCutoffEnableTimer(40.0), lvdc(lvda)
 {
 	lvda.Init(this);
 }
 
 IU1B::~IU1B()
 {
-	if (lvdc)
-	{
-		delete lvdc;
-		lvdc = 0;
-	}
+
 }
 
 void IU1B::Timestep(double misst, double simt, double simdt, double mjd)
@@ -1406,22 +1474,9 @@ void IU1B::Timestep(double misst, double simt, double simdt, double mjd)
 
 	EngineCutoffEnableTimer.Timestep(simdt);
 	ControlDistributor.Timestep(simdt);
-
-	if (lvdc != NULL) {
-		eds.Timestep(simdt);
-		lvdc->TimeStep(simdt);
-	}
+	eds.Timestep(simdt);
+	lvdc.TimeStep(simdt);
 	fcc.Timestep(simdt);
-
-	//For now, enable the LV lights here
-	if (MissionTime > -250.0 && MissionTime < -10.0)
-	{
-		eds.SetIUEDSBusPowered(true);
-	}
-	if (ControlDistributor.GetGSECommandVehicleLiftoffIndicationInhibit() == false)
-	{
-		EngineCutoffEnableTimer.SetRunning(true);
-	}
 }
 
 bool IU1B::SIBLowLevelSensorsDry()
@@ -1433,42 +1488,18 @@ void IU1B::LoadLVDC(FILEHANDLE scn) {
 
 	char *line;
 
-	// If the LVDC does not yet exist, create it.
-	if (lvdc == NULL) {
-		lvdc = new LVDC1B(lvda);
-		lvrg.Init(&lvCommandConnector);			// LV Rate Gyro Package
-		lvimu.SetVessel(&lvCommandConnector);	// set vessel pointer
-		lvimu.CoarseAlignEnableFlag = false;	// Clobber this
-		lvdc->Init();
-		fcc.Init(this);
-	}
-	lvdc->LoadState(scn);
+	lvrg.Init(&lvCommandConnector);			// LV Rate Gyro Package
+	lvimu.SetVessel(&lvCommandConnector);	// set vessel pointer
+	lvimu.CoarseAlignEnableFlag = false;	// Clobber this
+	lvdc.Init();
+
+	lvdc.LoadState(scn);
 
 	if (oapiReadScenario_nextline(scn, line)) {
 		if (!strnicmp(line, LVIMU_START_STRING, sizeof(LVIMU_START_STRING))) {
 			lvimu.LoadState(scn);
 		}
 	}
-}
-
-void IU1B::SaveFCC(FILEHANDLE scn)
-{
-	fcc.SaveState(scn, "FCC_BEGIN", "FCC_END");
-}
-
-void IU1B::LoadFCC(FILEHANDLE scn)
-{
-	fcc.LoadState(scn, "FCC_END");
-}
-
-void IU1B::SaveEDS(FILEHANDLE scn)
-{
-	eds.SaveState(scn, "EDS_BEGIN", "EDS_END");
-}
-
-void IU1B::LoadEDS(FILEHANDLE scn)
-{
-	eds.LoadState(scn, "EDS_END");
 }
 
 void IU1B::SwitchSelector(int item)
@@ -1510,7 +1541,7 @@ void IU1B::SwitchSelector(int item)
 		ControlDistributor.SetExcessiveRatePYRAutoAbortInhibitEnable(true);
 		break;
 	case 16: //Auto-Abort Enable Relays Reset
-		eds.ResetAutoAbortRelays();
+		eds.LiftoffEnableReset();
 		break;
 	case 18: //S/C Control of Saturn Enable
 		eds.EnableSCControl();
@@ -1567,18 +1598,14 @@ void IU1B::SwitchSelector(int item)
 	}
 }
 
-IUSV::IUSV() : fcc(this), eds(this), ControlDistributor(this), EngineCutoffEnableTimer(30.0)
+IUSV::IUSV() : fcc(this), eds(this), ControlDistributor(this), EngineCutoffEnableTimer(30.0), lvdc(lvda)
 {
 	lvda.Init(this);
 }
 
 IUSV::~IUSV()
 {
-	if (lvdc)
-	{
-		delete lvdc;
-		lvdc = 0;
-	}
+
 }
 
 void IUSV::Timestep(double misst, double simt, double simdt, double mjd)
@@ -1587,38 +1614,21 @@ void IUSV::Timestep(double misst, double simt, double simdt, double mjd)
 
 	EngineCutoffEnableTimer.Timestep(simdt);
 	ControlDistributor.Timestep(simdt);
-
-	if (lvdc != NULL) {
-		eds.Timestep(simdt);
-		lvdc->TimeStep(simdt);
-	}
+	eds.Timestep(simdt);
+	lvdc.TimeStep(simdt);
 	fcc.Timestep(simdt);
-
-	//For now, enable the LV lights here
-	if (MissionTime > -250.0 && MissionTime < -10.0)
-	{
-		eds.SetIUEDSBusPowered(true);
-	}
-	if (ControlDistributor.GetGSECommandVehicleLiftoffIndicationInhibit() == false)
-	{
-		EngineCutoffEnableTimer.SetRunning(true);
-	}
 }
 
 void IUSV::LoadLVDC(FILEHANDLE scn) {
 
 	char *line;
 
-	// If the LVDC does not yet exist, create it.
-	if (lvdc == NULL) {
-		lvdc = new LVDCSV(lvda);
-		lvrg.Init(&lvCommandConnector);			// LV Rate Gyro Package
-		lvimu.SetVessel(&lvCommandConnector);	// set vessel pointer
-		lvimu.CoarseAlignEnableFlag = false;	// Clobber this
-		lvdc->Init();
-		fcc.Init(this);
-	}
-	lvdc->LoadState(scn);
+	lvrg.Init(&lvCommandConnector);			// LV Rate Gyro Package
+	lvimu.SetVessel(&lvCommandConnector);	// set vessel pointer
+	lvimu.CoarseAlignEnableFlag = false;	// Clobber this
+	lvdc.Init();
+
+	lvdc.LoadState(scn);
 
 	if (oapiReadScenario_nextline(scn, line)) {
 		if (!strnicmp(line, LVIMU_START_STRING, sizeof(LVIMU_START_STRING))) {
@@ -1637,24 +1647,11 @@ bool IUSV::GetSIIEngineOut()
 	return lvCommandConnector.GetSIIEngineOut();
 }
 
-void IUSV::SaveFCC(FILEHANDLE scn)
+bool IUSV::ESEGetSICOutboardEnginesCantInhibit()
 {
-	fcc.SaveState(scn, "FCC_BEGIN", "FCC_END");
-}
+	if (!IsUmbilicalConnected()) return false;
 
-void IUSV::LoadFCC(FILEHANDLE scn)
-{
-	fcc.LoadState(scn, "FCC_END");
-}
-
-void IUSV::SaveEDS(FILEHANDLE scn)
-{
-	eds.SaveState(scn, "EDS_BEGIN", "EDS_END");
-}
-
-void IUSV::LoadEDS(FILEHANDLE scn)
-{
-	eds.LoadState(scn, "EDS_END");
+	return IuUmb->ESEGetSICOutboardEnginesCantInhibit();
 }
 
 void IUSV::SwitchSelector(int item)
@@ -1705,7 +1702,7 @@ void IUSV::SwitchSelector(int item)
 		ControlDistributor.SetExcessiveRatePYRAutoAbortInhibitEnable(true);
 		break;
 	case 16: //Auto-Abort Enable Relays Reset
-		eds.ResetAutoAbortRelays();
+		eds.LiftoffEnableReset();
 		break;
 	case 17: //Tape Recorder Record Off
 		break;

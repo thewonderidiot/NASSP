@@ -104,14 +104,6 @@ bool SaturnToIUCommandConnector::ReceiveMessage(Connector *from, ConnectorMessag
 		}
 		break;
 
-	case IULV_GET_ALTITUDE:
-		if (OurVessel)
-		{
-			m.val1.dValue = OurVessel->GetAltitude();
-			return true;
-		}
-		break;
-
 	case IULV_GET_GLOBAL_ORIENTATION:
 		if (OurVessel)
 		{
@@ -309,14 +301,6 @@ bool SaturnToIUCommandConnector::ReceiveMessage(Connector *from, ConnectorMessag
 		}
 		break;
 
-	case IULV_GET_FIRST_STAGE_THRUST:
-		if (OurVessel)
-		{
-			m.val1.dValue = OurVessel->GetFirstStageThrust();
-			return true;
-		}
-		break;
-
 	case IULV_GET_SII_FUEL_TANK_PRESSURE:
 		if (OurVessel)
 		{
@@ -465,14 +449,6 @@ bool SaturnToIUCommandConnector::ReceiveMessage(Connector *from, ConnectorMessag
 		if (OurVessel)
 		{
 			OurVessel->SetQBallPowerOff();
-			return true;
-		}
-		break;
-
-	case IULV_ADD_FORCE:
-		if (OurVessel)
-		{
-			OurVessel->AddForce(m.val1.vValue, m.val2.vValue);
 			return true;
 		}
 		break;
@@ -841,6 +817,21 @@ double CSMToIUConnector::GetLVTankPressure(int n)
 	}
 
 	return 0.0;
+}
+
+bool CSMToIUConnector::GetAbortLight()
+{
+	ConnectorMessage cm;
+
+	cm.destination = CSM_IU_COMMAND;
+	cm.messageType = CSMIU_GET_ABORT_LIGHT_SIGNAL;
+
+	if (SendMessage(cm))
+	{
+		return cm.val1.bValue;
+	}
+
+	return false;
 }
 
 CSMToLEMECSConnector::CSMToLEMECSConnector(Saturn *s) : SaturnConnector(s)
