@@ -28,21 +28,24 @@
 #include "AGCBridge.h"
 
 AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
-    FT_STATUS status;
+	FT_STATUS status;
 	char ser[20];
 
-    agc = guidance;
-    read_buf_len = 0;
-    halted = false;
-    for (uint8_t i = 0; i < 0100; i++) {
-        if (i >= 030 && i <= 033) {
-            channels[i] = 077777;
-        } else {
-            channels[i] = 0;
-        }
-    }
+	agc = guidance;
+	halted = false;
 
-    mon_log.open("monitor.log", std::ios::out | std::ios::trunc);
+	escaped = false;
+	msg_bytes = 0;
+
+	for (uint8_t i = 0; i < 0100; i++) {
+		if (i >= 030 && i <= 033) {
+			channels[i] = 077777;
+		} else {
+			channels[i] = 0;
+		}
+	}
+
+	mon_log.open("monitor.log", std::ios::out | std::ios::trunc);
 
 	strncpy(ser, serial, 20);
 	for (int i = 0; i < 20; i++) {
@@ -52,60 +55,60 @@ AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
 		}
 	}
 
-    status = FT_OpenEx(ser, FT_OPEN_BY_SERIAL_NUMBER, &mon_handle);
-    if (status != FT_OK)
-    {
-        mon_log << "Failed to open monitor, RC=" << status << std::endl;
-        return;
-    }
+	status = FT_OpenEx(ser, FT_OPEN_BY_SERIAL_NUMBER, &mon_handle);
+	if (status != FT_OK)
+	{
+		mon_log << "Failed to open monitor, RC=" << status << std::endl;
+		return;
+	}
 
-    mon_log << "Monitor connected!" << std::endl;
+	mon_log << "Monitor connected!" << std::endl;
 
-    FT_SetTimeouts(mon_handle, 1, 1);
-    FT_SetBitMode(mon_handle, 0xFF, 0x00);
-    FT_SetBitMode(mon_handle, 0xFF, 0x40);
-    FT_SetUSBParameters(mon_handle, 128, 128);
-    FT_SetLatencyTimer(mon_handle, 2);
-    FT_SetFlowControl(mon_handle, FT_FLOW_RTS_CTS, 0, 0);
-    FT_Purge(mon_handle, FT_PURGE_RX);
-    FT_Purge(mon_handle, FT_PURGE_TX);
+	FT_SetTimeouts(mon_handle, 1, 1);
+	FT_SetBitMode(mon_handle, 0xFF, 0x00);
+	FT_SetBitMode(mon_handle, 0xFF, 0x40);
+	FT_SetUSBParameters(mon_handle, 128, 128);
+	FT_SetLatencyTimer(mon_handle, 2);
+	FT_SetFlowControl(mon_handle, FT_FLOW_RTS_CTS, 0, 0);
+	FT_Purge(mon_handle, FT_PURGE_RX);
+	FT_Purge(mon_handle, FT_PURGE_TX);
 }
 
 AGCBridge::~AGCBridge() {
-    send_message(MonitorMessage(MON_GROUP_NASSP, 0, 0));
-    send_message(MonitorMessage(MON_GROUP_NASSP, 1, 0));
-    send_message(MonitorMessage(MON_GROUP_NASSP, 2, 0));
-    send_message(MonitorMessage(MON_GROUP_NASSP, 3, 0));
-    Sleep(50);
-    FT_Close(mon_handle);
-    mon_log << "Monitor disconnected." << std::endl;
-    mon_log.close();
+	send_message(MonitorMessage(MON_GROUP_NASSP, 0, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, 1, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, 2, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, 3, 0));
+	Sleep(50);
+	FT_Close(mon_handle);
+	mon_log << "Monitor disconnected." << std::endl;
+	mon_log.close();
 }
 
 void AGCBridge::service(double simt) {
-    if (dsky_flash && ((simt - dsky_flash_t) >= 0.32)) {
-        dsky_flash = false;
-        dsky_flash_t = simt;
-    } else if (!dsky_flash && ((simt - dsky_flash_t) >= 0.96)) {
-        dsky_flash = true;
-        dsky_flash_t = simt;
-    }
+	if (dsky_flash && ((simt - dsky_flash_t) >= 0.32)) {
+		dsky_flash = false;
+		dsky_flash_t = simt;
+	} else if (!dsky_flash && ((simt - dsky_flash_t) >= 0.96)) {
+		dsky_flash = true;
+		dsky_flash_t = simt;
+	}
 
-    if (halted) {
+	if (halted) {
 		resume();
-    }
+	}
 
-    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 005));
-    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 006));
-    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 010));
-    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 011));
-    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 012));
-    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 013));
-    send_message(MonitorMessage(MON_GROUP_MON_CHAN, 014));
-    send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_THRUST));
-    send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_ALTM));
-    send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_STATUS));
-    read_messages();
+	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 005));
+	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 006));
+	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 010));
+	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 011));
+	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 012));
+	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 013));
+	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 014));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_THRUST));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_ALTM));
+	send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_STATUS));
+	read_messages();
 }
 
 void AGCBridge::halt() {
@@ -131,20 +134,20 @@ void AGCBridge::set_erasable(int bank, int address, int value) {
 }
 
 void AGCBridge::pulse_pipa(int reg_pipa, int pulses) {
-    if (pulses < 0) {
-        pulses = (-pulses) ^ 077777;
-    }
-    // FIXME: Figure out why I need to force a stop to prevent restarts...
-    send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_PIPAX + (reg_pipa - RegPIPAX), pulses));
+	if (pulses < 0) {
+		pulses = (-pulses) ^ 077777;
+	}
+	// FIXME: Figure out why I need to force a stop to prevent restarts...
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_PIPAX + (reg_pipa - RegPIPAX), pulses));
 }
 
 void AGCBridge::set_input_channel(int channel, int value) {
 	channels[channel] = value;
 
-    if (channel == 015) {
-        send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_BUTTON, value));
-    } else if ((channel >= 030) && (channel <= 033)) {
-        send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | value));
+	if (channel == 015) {
+		send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_BUTTON, value));
+	} else if ((channel >= 030) && (channel <= 033)) {
+		send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | value));
 	}
 }
 
@@ -158,188 +161,146 @@ int AGCBridge::get_channel_value(int channel) {
 }
 
 void AGCBridge::send_message(MonitorMessage &msg) {
-    uint8_t msg_buf[MON_DATA_MSG_SIZE];
-    uint8_t slipped_buf[MON_DATA_MSG_SIZE * 2 + 2];
-    uint8_t length = MON_READ_MSG_SIZE;
-    uint8_t slipped_length;
-    FT_STATUS status;
-    DWORD bytes_written;
+	uint8_t msg_buf[MON_DATA_MSG_SIZE];
+	uint8_t slipped_buf[MON_DATA_MSG_SIZE * 2 + 2];
+	uint8_t length = MON_READ_MSG_SIZE;
+	uint8_t slipped_length;
+	FT_STATUS status;
+	DWORD bytes_written;
 
-    msg_buf[0] = msg.group;
-    msg_buf[1] = (msg.address >> 8) & 0xFF;
-    msg_buf[2] = msg.address & 0xFF;
+	msg_buf[0] = msg.group;
+	msg_buf[1] = (msg.address >> 8) & 0xFF;
+	msg_buf[2] = msg.address & 0xFF;
 
-    if (msg.has_data) {
-        length = MON_DATA_MSG_SIZE;
+	if (msg.has_data) {
+		length = MON_DATA_MSG_SIZE;
 
-        msg_buf[0] |= MON_DATA_FLAG;
-        msg_buf[3] = (msg.data >> 8) & 0xFF;
-        msg_buf[4] = msg.data & 0xFF;
-    }
+		msg_buf[0] |= MON_DATA_FLAG;
+		msg_buf[3] = (msg.data >> 8) & 0xFF;
+		msg_buf[4] = msg.data & 0xFF;
+	}
 
-    slipped_length = slip(slipped_buf, msg_buf, length);
+	slipped_length = slip(slipped_buf, msg_buf, length);
 
-    status = FT_Write(mon_handle, slipped_buf, slipped_length, &bytes_written);
-    if (status != FT_OK) {
-        mon_log << "Failed write, RC=" << status << " (wrote " << bytes_written << ")" << std::endl;
-    }
+	status = FT_Write(mon_handle, slipped_buf, slipped_length, &bytes_written);
+	if (status != FT_OK) {
+		mon_log << "Failed write, RC=" << status << " (wrote " << bytes_written << ")" << std::endl;
+	}
 }
 
 void AGCBridge::read_messages() {
-    FT_STATUS status;
-    DWORD bytes_read;
-    uint16_t bytes_used;
-    uint16_t read_offset = 0;
-    MonitorMessage msg(0, 0);
+	FT_STATUS status;
+	DWORD bytes_read;
+	uint8_t read_buf[4096];
 
-    status = FT_Read(mon_handle, read_buf + read_buf_len, 4096, &bytes_read);
-    if (status != FT_OK) {
-        mon_log << "Failed read, RC=" << status << " (read " << bytes_read << ")" << std::endl;
-        return;
-    }
+	status = FT_Read(mon_handle, read_buf, sizeof(read_buf), &bytes_read);
+	if (status != FT_OK) {
+		mon_log << "Failed read, RC=" << status << " (read " << bytes_read << ")" << std::endl;
+		return;
+	}
 
-    read_buf_len += (uint16_t)bytes_read;
-
-    while (read_offset < read_buf_len) {
-        boolean found_msg = unslip_message(read_buf + read_offset, read_buf_len - read_offset, &msg, &bytes_used);
-
-        read_offset += bytes_used;
-        if (!found_msg) {
-            if (read_offset > 0) {
-                memmove(read_buf, read_buf + read_offset, read_buf_len - read_offset);
-            }
-            break;
-        }
-        handle_message(msg);
-    }
-    
-    read_buf_len -= read_offset;
+	process_bytes(read_buf, (uint16_t)bytes_read);
 }
 
 void AGCBridge::handle_message(MonitorMessage &msg) {
-    switch (msg.group) {
-    case MON_GROUP_MON_CHAN:
+	switch (msg.group) {
+	case MON_GROUP_MON_CHAN:
 		channels[msg.address] = msg.data;
-        agc->SetOutputChannel(msg.address, msg.data);
-        break;
+		agc->SetOutputChannel(msg.address, msg.data);
+		break;
 
-    case MON_GROUP_DSKY:
-        switch (msg.address) {
-        case MON_DSKY_STATUS:
-            ChannelValue v = msg.data;
-            ChannelValue ch163 = 0;
-            ChannelValue ch11 = 0;
+	case MON_GROUP_DSKY:
+		switch (msg.address) {
+		case MON_DSKY_STATUS:
+			ChannelValue v = msg.data;
+			ChannelValue ch163 = 0;
+			ChannelValue ch11 = 0;
 
-            ch163[Ch163LightTemp] = v[6];
-            if (!dsky_flash) {
-                ch163[Ch163LightKbRel] = v[10];
-                ch163[Ch163LightOprErr] = v[9];
-            }
-            ch163[Ch163LightRestart] = v[3];
-            ch163[Ch163LightStandby] = v[11];
-            if (v[15]) {
-                ch163[Ch163FlashVerbNoun] = dsky_flash;
-            }
-            agc->SetOutputChannel(0163, ch163);
+			ch163[Ch163LightTemp] = v[6];
+			if (!dsky_flash) {
+				ch163[Ch163LightKbRel] = v[10];
+				ch163[Ch163LightOprErr] = v[9];
+			}
+			ch163[Ch163LightRestart] = v[3];
+			ch163[Ch163LightStandby] = v[11];
+			if (v[15]) {
+				ch163[Ch163FlashVerbNoun] = dsky_flash;
+			}
+			agc->SetOutputChannel(0163, ch163);
 
-            ch11[LightComputerActivity] = v[14];
-            ch11[LightUplink] = v[13];
-            agc->SetOutputChannel(011, ch11);
-            break;
-        }
-        break;
+			ch11[LightComputerActivity] = v[14];
+			ch11[LightUplink] = v[13];
+			agc->SetOutputChannel(011, ch11);
+			break;
+		}
+		break;
 
-    case MON_GROUP_NASSP:
-        if (msg.address == MON_NASSP_THRUST) {
-            if ((msg.data & 0x8000) && ((msg.data & 077777) != 077777)) {
-                agc->SetOutputChannel(0142, msg.data & 077777);
-            }
-        } else if (msg.address == MON_NASSP_ALTM) {
-            if (msg.data & 0x8000) {
-                agc->SetOutputChannel(0143, msg.data & 077777);
-            }
-        }
-    }
+	case MON_GROUP_NASSP:
+		if (msg.address == MON_NASSP_THRUST) {
+			if ((msg.data & 0x8000) && ((msg.data & 077777) != 077777)) {
+				agc->SetOutputChannel(0142, msg.data & 077777);
+			}
+		} else if (msg.address == MON_NASSP_ALTM) {
+			if (msg.data & 0x8000) {
+				agc->SetOutputChannel(0143, msg.data & 077777);
+			}
+		}
+	}
 
 }
 
 uint8_t AGCBridge::slip(uint8_t *slipped, uint8_t *buf, uint8_t length) {
-    uint8_t n = 0;
+	uint8_t n = 0;
 
-    slipped[n++] = SLIP_END;
-    for (uint8_t i = 0; i < length; i++) {
-        if (buf[i] == SLIP_END) {
-            slipped[n++] = SLIP_ESC;
-            slipped[n++] = SLIP_ESC_END;
-        } else if (buf[i] == SLIP_ESC) {
-            slipped[n++] = SLIP_ESC;
-            slipped[n++] = SLIP_ESC_ESC;
-        } else {
-            slipped[n++] = buf[i];
-        }
-    }
-    slipped[n++] = SLIP_END;
+	slipped[n++] = SLIP_END;
+	for (uint8_t i = 0; i < length; i++) {
+		if (buf[i] == SLIP_END) {
+			slipped[n++] = SLIP_ESC;
+			slipped[n++] = SLIP_ESC_END;
+		} else if (buf[i] == SLIP_ESC) {
+			slipped[n++] = SLIP_ESC;
+			slipped[n++] = SLIP_ESC_ESC;
+		} else {
+			slipped[n++] = buf[i];
+		}
+	}
+	slipped[n++] = SLIP_END;
 
-    return n;
+	return n;
 }
 
-boolean AGCBridge::unslip_message(uint8_t *buf, uint16_t length, MonitorMessage *msg, uint16_t *bytes_used) {
-    uint16_t end = 0;
-    uint16_t non_end = 0;
-    uint16_t n = 0;
-    uint8_t msg_buf[MON_DATA_MSG_SIZE];
-    boolean escaped = false;
+void AGCBridge::process_bytes(uint8_t *buf, uint16_t length) {
+	MonitorMessage msg(0, 0);
 
-    *bytes_used = 0;
-    while ((buf[*bytes_used] != SLIP_END) && (*bytes_used < length)) {
-        (*bytes_used)++;
-    }
+	for (uint16_t i = 0; i < length; i++) {
+		if (buf[i] == SLIP_END) {
+			if (!escaped && (msg_bytes == sizeof(msg_buf))) {
+				msg.group = msg_buf[0] & ~MON_DATA_FLAG;
+				msg.address = (msg_buf[1] << 8) | msg_buf[2];
+				msg.data = (msg_buf[3] << 8) | msg_buf[4];
+				msg.has_data = true;
 
-    if (*bytes_used == length) {
-        return false;
-    }
-
-    for (non_end = *bytes_used + 1; non_end < length; non_end++) {
-        if (buf[non_end] != SLIP_END) {
-            break;
-        }
-    }
-
-    if (non_end == length) {
-        return false;
-    }
-
-    for (end = non_end; end < length; end++) {
-        if (buf[end] == SLIP_END) {
-            break;
-        }
-    }
-
-    if (end == length) {
-        return false;
-    }
- 
-    for (uint16_t i = *bytes_used + 1; i < end; i++) {
-        if (escaped) {
-            escaped = false;
-            if (buf[i] == SLIP_ESC_END) {
-                msg_buf[n++] = SLIP_END;
-            } else {
-                msg_buf[n++] = SLIP_ESC;
-            }
-        } else if (buf[i] == SLIP_ESC) {
-            escaped = true;
-        } else {
-            msg_buf[n++] = buf[i];
-        }
-    }
-
-    *bytes_used = end + 1;
-
-    msg->group = msg_buf[0] & ~MON_DATA_FLAG;
-    msg->address = (msg_buf[1] << 8) | msg_buf[2];
-    msg->data = (msg_buf[3] << 8) | msg_buf[4];
-    msg->has_data = true;
-
-    return true;
+				handle_message(msg);
+			}
+			msg_bytes = 0;
+		} else if (msg_bytes < sizeof(msg_buf)) {
+			if (!escaped && (buf[i] == SLIP_ESC)) {
+				escaped = true;
+			} else if (escaped) {
+				escaped = false;
+				if (buf[i] == SLIP_ESC_END) {
+					msg_buf[msg_bytes++] = SLIP_END;
+				} else if (buf[i] == SLIP_ESC_ESC) {
+					msg_buf[msg_bytes++] = SLIP_ESC;
+				} else {
+					msg_bytes = 0;
+				}
+			} else {
+				msg_buf[msg_bytes++] = buf[i];
+			}
+		} else {
+			escaped = false;
+			msg_bytes = 0;
+		}
+	}
 }

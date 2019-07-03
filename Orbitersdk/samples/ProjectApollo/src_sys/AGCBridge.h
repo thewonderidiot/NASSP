@@ -62,53 +62,54 @@ class ApolloGuidance;
 
 class MonitorMessage {
 public:
-    MonitorMessage(uint8_t g, uint16_t a) {
-        group = g;
-        address = a;
-        has_data = false;
-    }
+	MonitorMessage(uint8_t g, uint16_t a) {
+		group = g;
+		address = a;
+		has_data = false;
+	}
 
-    MonitorMessage(uint8_t g, uint16_t a, uint16_t d) {
-        group = g;
-        address = a;
-        has_data = true;
-        data = d;
-    }
+	MonitorMessage(uint8_t g, uint16_t a, uint16_t d) {
+		group = g;
+		address = a;
+		has_data = true;
+		data = d;
+	}
 
-    uint8_t group;
-    uint16_t address;
-    boolean has_data;
-    uint16_t data;
+	uint8_t group;
+	uint16_t address;
+	boolean has_data;
+	uint16_t data;
 };
 
 class AGCBridge {
 public:
-    AGCBridge(char *serial, ApolloGuidance *guidance);
-    ~AGCBridge();
+	AGCBridge(char *serial, ApolloGuidance *guidance);
+	~AGCBridge();
 	void halt();
 	void resume();
 	void restart();
-    void set_erasable(int bank, int address, int value);
-    void set_input_channel(int channel, int value);
-    void set_output_channel(int channel, int value);
+	void set_erasable(int bank, int address, int value);
+	void set_input_channel(int channel, int value);
+	void set_output_channel(int channel, int value);
 	int get_channel_value(int channel);
-    void pulse_pipa(int reg_pipa, int pulses);
-    void service(double simt);
+	void pulse_pipa(int reg_pipa, int pulses);
+	void service(double simt);
 
 private:
 	void send_message(MonitorMessage &msg);
-    void read_messages();
-    void handle_message(MonitorMessage &msg);
-    boolean unslip_message(uint8_t *buf, uint16_t length, MonitorMessage *msg, uint16_t *bytes_used);
-    uint8_t slip(uint8_t *slipped, uint8_t *buf, uint8_t length);
+	void read_messages();
+	void handle_message(MonitorMessage &msg);
+	void process_bytes(uint8_t *buf, uint16_t length);
+	uint8_t slip(uint8_t *slipped, uint8_t *buf, uint8_t length);
 
-    ApolloGuidance *agc;
-    FT_HANDLE mon_handle;
-    std::ofstream mon_log;
-    uint8_t read_buf[4096 + 2*MON_READ_MSG_SIZE + 2];
-    uint16_t read_buf_len;
-    boolean dsky_flash;
-    double dsky_flash_t;
+	ApolloGuidance *agc;
+	FT_HANDLE mon_handle;
+	std::ofstream mon_log;
+	boolean escaped;
+	uint8_t msg_bytes;
+	uint8_t msg_buf[MON_DATA_MSG_SIZE];
+	boolean dsky_flash;
+	double dsky_flash_t;
 	uint16_t channels[0100];
 	boolean halted;
 };
