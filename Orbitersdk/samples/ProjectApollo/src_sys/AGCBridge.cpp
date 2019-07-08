@@ -37,7 +37,7 @@ AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
 	escaped = false;
 	msg_bytes = 0;
 
-	for (uint8_t i = 0; i < 0100; i++) {
+	for (uint8_t i = 0; i < 0200; i++) {
 		if (i >= 030 && i <= 033) {
 			channels[i] = 077777;
 		} else {
@@ -67,8 +67,8 @@ AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
 	FT_SetTimeouts(mon_handle, 1, 1);
 	FT_SetBitMode(mon_handle, 0xFF, 0x00);
 	FT_SetBitMode(mon_handle, 0xFF, 0x40);
-	FT_SetUSBParameters(mon_handle, 128, 128);
-	FT_SetLatencyTimer(mon_handle, 2);
+	FT_SetUSBParameters(mon_handle, 16, 16);
+	FT_SetLatencyTimer(mon_handle, 1);
 	FT_SetFlowControl(mon_handle, FT_FLOW_RTS_CTS, 0, 0);
 	FT_Purge(mon_handle, FT_PURGE_RX);
 	FT_Purge(mon_handle, FT_PURGE_TX);
@@ -105,6 +105,11 @@ void AGCBridge::service(double simt) {
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 012));
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 013));
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 014));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CDUXCMD));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CDUYCMD));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CDUZCMD));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CDUTCMD));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CDUSCMD));
 	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_THRUST));
 	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_ALTM));
 	send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_STATUS));
@@ -128,9 +133,30 @@ void AGCBridge::restart() {
 	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_START, 1));
 }
 
+void AGCBridge::load_rom(int16_t fixed[40][1024], uint32_t parities[1280]) {
+	for (uint16_t bank = 0; bank < 40; bank++) {
+		for (uint16_t s = 0; s < 1024; s++) {
+			uint16_t faddr = (bank * 1024) + s;
+			uint16_t word = (uint16_t)fixed[bank][s] << 1;
+			uint16_t parity = (parities[faddr / 32] >> (faddr % 32)) & 0x1;
+			mon_log << std::oct << faddr << " = " << (word | parity) << std::endl;
+			send_message(MonitorMessage(MON_GROUP_SIM_FIXED, faddr, word | parity));
+		}
+		Sleep(50);
+	}
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_CRS_BANK_EN0, 0xFFFF));
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_CRS_BANK_EN1, 0xFFFF));
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_CRS_BANK_EN2, 0xFFFF));
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_CRS_BANK_EN3, 0xFFFF));
+}
+
+void AGCBridge::simulate_erasable() {
+	send_message(MonitorMessage(MON_GROUP_CONTROL, MON_CONTROL_EMS_BANK_EN, 0xFF));
+}
+
 void AGCBridge::set_erasable(int bank, int address, int value) {
 	// FIXME: Figure out why I need to force a stop to prevent restarts...
-	send_message(MonitorMessage(MON_GROUP_ERASABLE, bank * 256 + address, value << 1));
+	send_message(MonitorMessage(MON_GROUP_SIM_ERASABLE, bank * 256 + address, value << 1));
 }
 
 void AGCBridge::pulse_pipa(int reg_pipa, int pulses) {
@@ -236,14 +262,56 @@ void AGCBridge::handle_message(MonitorMessage &msg) {
 		break;
 
 	case MON_GROUP_NASSP:
-		if (msg.address == MON_NASSP_THRUST) {
-			if ((msg.data & 0x8000) && ((msg.data & 077777) != 077777)) {
-				agc->SetOutputChannel(0142, msg.data & 077777);
+		bool new_value = msg.data & 0x8000;
+		uint16_t data = msg.data & 077777;
+		uint16_t channel;
+
+		switch (msg.address) {
+		case MON_NASSP_CDUXCMD:
+			channel = 0174;
+			if (data & 040000) {
+				data ^= 037777;
 			}
-		} else if (msg.address == MON_NASSP_ALTM) {
-			if (msg.data & 0x8000) {
-				agc->SetOutputChannel(0143, msg.data & 077777);
+			break;
+
+		case MON_NASSP_CDUYCMD:
+			channel = 0175;
+			if (data & 040000) {
+				data ^= 037777;
 			}
+			break;
+
+		case MON_NASSP_CDUZCMD:
+			channel = 0176;
+			if (data & 040000) {
+				data ^= 037777;
+			}
+			break;
+
+		case MON_NASSP_CDUTCMD:
+			channel = 0141;
+			break;
+
+		case MON_NASSP_CDUSCMD:
+			channel = 0140;
+			break;
+
+		case MON_NASSP_THRUST:
+			channel = 0142;
+			break;
+
+		case MON_NASSP_ALTM:
+			channel = 0143;
+			break;
+
+		default:
+			return;
+		}
+
+		if (new_value && (data != 0) && (data != 077777)) {
+			mon_log << std::oct << channel << ": " << data << std::endl;
+			channels[channel] = data;
+			agc->SetOutputChannel(channel, data);
 		}
 	}
 

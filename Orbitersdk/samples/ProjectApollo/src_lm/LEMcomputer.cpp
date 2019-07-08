@@ -107,6 +107,9 @@ void LEMcomputer::SetMissionInfo(int MissionNo, char *OtherVessel)
 	}
 
 	agc_load_binfile(&vagc, binfile);
+	if (agc_bridge) {
+		agc_bridge->load_rom(vagc.Fixed, vagc.Parities);
+	}
 }
 
 void LEMcomputer::agcTimestep(double simt, double simdt)

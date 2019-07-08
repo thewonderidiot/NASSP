@@ -114,6 +114,9 @@ void ApolloGuidance::InitVirtualAGC(char *binfile)
 {
 
 	(void) agc_load_binfile(&vagc, binfile);
+	if (agc_bridge) {
+		agc_bridge->load_rom(vagc.Fixed, vagc.Parities);
+	}
 
 	// Set channels only once, otherwise this code overwrites the channel values in the scenario
 	if (!PadLoaded) { 
@@ -291,9 +294,7 @@ void ApolloGuidance::SetErasable(int bank, int address, int value)
 	vagc.Erasable[bank][address] = value;
 
 	if (agc_bridge) {
-		agc_bridge->halt();
 		agc_bridge->set_erasable(bank, address, value);
-		agc_bridge->resume();
 	}
 }
 
@@ -323,9 +324,7 @@ void ApolloGuidance::PulsePIPA(int RegPIPA, int pulses)
 	}
 
 	if (agc_bridge) {
-		agc_bridge->halt();
 		agc_bridge->pulse_pipa(RegPIPA, pulses);
-		agc_bridge->resume();
 	}
 }
 
@@ -495,10 +494,6 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 	// Now load the data.
 	//
 
-	if (agc_bridge) {
-		agc_bridge->halt();
-	}
-
 	int last_emem = -1;
 	while (oapiReadScenario_nextline (scn, line)) {
 		if (!strnicmp(line, AGC_END_STRING, sizeof(AGC_END_STRING)))
@@ -615,6 +610,8 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 		}
 		else if (!strnicmp(line, "HARDWARE", 8)) {
 			agc_bridge = new AGCBridge(line + 9, this);
+			agc_bridge->halt();
+			agc_bridge->simulate_erasable();
 		}
 
 		papiReadScenario_bool(line, "PROGALARM", ProgAlarm);
