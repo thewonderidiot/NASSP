@@ -40,6 +40,7 @@
 #include "ioChannels.h"
 #include "papi.h"
 #include "thread.h"
+#include "AGCBridge.h"
 
 CSMcomputer::CSMcomputer(SoundLib &s, DSKY &display, DSKY &display2, IMU &im, CDU &sc, CDU &tc, PanelSDK &p) :
 	ApolloGuidance(s, display, im, sc, tc, p), dsky2(display2)
@@ -108,6 +109,11 @@ void CSMcomputer::SetMissionInfo(int MissionNo, char *OtherVessel)
 
 void CSMcomputer::agcTimestep(double simt, double simdt)
 {
+	if (agc_bridge) {
+		agc_bridge->service(simt);
+		return;
+	}
+
 	// Do single timesteps to maintain sync with telemetry engine
 	SingleTimestepPrep(simt, simdt);        // Setup
 	if (LastCycled == 0) {					// Use simdt as difference if new run

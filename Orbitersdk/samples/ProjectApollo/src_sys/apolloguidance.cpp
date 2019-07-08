@@ -41,8 +41,10 @@
 #include "cdu.h"
 #include "powersource.h"
 #include "papi.h"
+#include "AGCBridge.h"
 
 #include "tracer.h"
+
 
 ApolloGuidance::ApolloGuidance(SoundLib &s, DSKY &display, IMU &im, CDU &sc, CDU &tc, PanelSDK &p) : soundlib(s), dsky(display), imu(im), DCPower(0, p), scdu(sc), tcdu(tc)
 
@@ -52,6 +54,7 @@ ApolloGuidance::ApolloGuidance(SoundLib &s, DSKY &display, IMU &im, CDU &sc, CDU
 	LastTimestep = 0;
 	LastCycled = 0;
 	AGCHeat = NULL;
+	agc_bridge = NULL;
 
 	//
 	// Flight number.
@@ -101,6 +104,9 @@ ApolloGuidance::~ApolloGuidance()
 #ifdef _DEBUG
 	fclose(out_file);
 #endif
+	if (agc_bridge) {
+		delete agc_bridge;
+	}
 }
 
 void ApolloGuidance::InitVirtualAGC(char *binfile)
@@ -108,6 +114,9 @@ void ApolloGuidance::InitVirtualAGC(char *binfile)
 {
 
 	(void) agc_load_binfile(&vagc, binfile);
+	if (agc_bridge) {
+		agc_bridge->load_rom(vagc.Fixed, vagc.Parities);
+	}
 
 	// Set channels only once, otherwise this code overwrites the channel values in the scenario
 	if (!PadLoaded) { 
@@ -283,6 +292,10 @@ void ApolloGuidance::SetErasable(int bank, int address, int value)
 		return;
 
 	vagc.Erasable[bank][address] = value;
+
+	if (agc_bridge) {
+		agc_bridge->set_erasable(bank, address, value);
+	}
 }
 
 void ApolloGuidance::PulsePIPA(int RegPIPA, int pulses) 
@@ -299,7 +312,6 @@ void ApolloGuidance::PulsePIPA(int RegPIPA, int pulses)
 
 	Lock lock(agcCycleMutex);
 
-
 	if (pulses >= 0) {
     	for (i = 0; i < pulses; i++) {
 			UnprogrammedIncrement(&vagc, RegPIPA, 0);	// PINC
@@ -311,6 +323,9 @@ void ApolloGuidance::PulsePIPA(int RegPIPA, int pulses)
     	}
 	}
 
+	if (agc_bridge) {
+		agc_bridge->pulse_pipa(RegPIPA, pulses);
+	}
 }
 
 //
@@ -479,6 +494,7 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 	// Now load the data.
 	//
 
+	int last_emem = -1;
 	while (oapiReadScenario_nextline (scn, line)) {
 		if (!strnicmp(line, AGC_END_STRING, sizeof(AGC_END_STRING)))
 			break;
@@ -488,6 +504,13 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 			sscanf(line+4, "%o", &num);
 			sscanf(line+9, "%o", &val);
 			WriteMemory(num, val);
+			if (agc_bridge) {
+				for (int i = last_emem + 1; i < num; i++) {
+					agc_bridge->set_erasable(i / 256, i % 256, 0);
+				}
+				last_emem = num;
+				agc_bridge->set_erasable(num / 256, num % 256, val);
+			}
 		}
 		else if (!strnicmp (line, "VICHAN", 6)) {
 			int num;
@@ -495,6 +518,9 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 			sscanf(line+6, "%d", &num);
 			sscanf(line+10, "%d", &val);
 			vagc.InputChannel[num] = val;
+			if (agc_bridge && (num >= 030) && (num <= 033)) {
+				agc_bridge->set_input_channel(num, val);
+			}
 		}
 		else if (!strnicmp (line, "V10CHAN", 7)) {
 			int num;
@@ -509,6 +535,9 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 			sscanf(line+5, "%d", &num);
 			sscanf(line+9, "%d", &val);
 			OutputChannel[num] = val;
+			if (agc_bridge) {
+				agc_bridge->set_output_channel(num, val);
+			}
 		}
 		else if (!strnicmp (line, "VOC7", 4)) {
 			sscanf (line+4, "%" SCNd16, &vagc.OutputChannel7);
@@ -579,9 +608,18 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 		else if (!strnicmp (line, "ONAME", 5)) {
 			strncpy (OtherVesselName, line + 6, 64);
 		}
+		else if (!strnicmp(line, "HARDWARE", 8)) {
+			agc_bridge = new AGCBridge(line + 9, this);
+			agc_bridge->halt();
+			agc_bridge->simulate_erasable();
+		}
 
 		papiReadScenario_bool(line, "PROGALARM", ProgAlarm);
 		papiReadScenario_bool(line, "GIMBALLOCKALARM", GimbalLockAlarm);
+	}
+
+	if (agc_bridge) {
+		agc_bridge->restart();
 	}
 }
 
@@ -662,6 +700,10 @@ void ApolloGuidance::SetInputChannel(int channel, ChannelValue val)
 		}
 
 		WriteIO(&vagc, channel, val.to_ulong());
+
+		if (agc_bridge) {
+			agc_bridge->set_input_channel(channel, val.to_ulong());
+		}
 	}
 }
 
@@ -669,7 +711,12 @@ void ApolloGuidance::SetInputChannelBit(int channel, int bit, bool val)
 
 {
 	unsigned int mask = (1 << (bit));
-	int	data = vagc.InputChannel[channel];
+	int	data;
+	if (agc_bridge) {
+		data = agc_bridge->get_channel_value(channel);
+	} else {
+		data = vagc.InputChannel[channel];
+	}
 
 	//
 	// Channels 030-034 are inverted!
@@ -713,6 +760,10 @@ void ApolloGuidance::SetInputChannelBit(int channel, int bit, bool val)
 	}}
 
 	WriteIO(&vagc, channel, data);
+
+	if (agc_bridge) {
+		agc_bridge->set_input_channel(channel, data);
+	}
 }
 
 void ApolloGuidance::SetOutputChannel(int channel, ChannelValue val)
@@ -918,7 +969,12 @@ unsigned int ApolloGuidance::GetInputChannel(int channel)
 	// 0 = false, 1 = true form.
 	//
 
-	unsigned int val = vagc.InputChannel[channel];
+	unsigned int val;
+	if (agc_bridge) {
+		val = agc_bridge->get_channel_value(channel);
+	} else {
+		val = vagc.InputChannel[channel];
+	}
 	
 	if ((channel >= 030) && (channel <= 034))
 		val ^= 077777;
@@ -964,6 +1020,10 @@ void ApolloGuidance::GenericWriteMemory(unsigned int loc, int val)
 
 	if (bank >= 0 && bank < 8)
 		vagc.Erasable[bank][addr] = val;
+
+	if (agc_bridge) {
+		agc_bridge->set_erasable(bank, addr, val);
+	}
 	return;
 }
 

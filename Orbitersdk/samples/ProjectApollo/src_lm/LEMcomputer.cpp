@@ -37,6 +37,7 @@
 #include "papi.h"
 #include "saturn.h"
 #include "LEM.h"
+#include "AGCBridge.h"
 
 #include "lm_channels.h"
 
@@ -106,10 +107,18 @@ void LEMcomputer::SetMissionInfo(int MissionNo, char *OtherVessel)
 	}
 
 	agc_load_binfile(&vagc, binfile);
+	if (agc_bridge) {
+		agc_bridge->load_rom(vagc.Fixed, vagc.Parities);
+	}
 }
 
 void LEMcomputer::agcTimestep(double simt, double simdt)
 {
+	if (agc_bridge) {
+		agc_bridge->service(simt);
+		return;
+	}
+
 	// Do single timesteps to maintain sync with telemetry engine
 	SingleTimestepPrep(simt, simdt);        // Setup
 	if (LastCycled == 0) {					// Use simdt as difference if new run

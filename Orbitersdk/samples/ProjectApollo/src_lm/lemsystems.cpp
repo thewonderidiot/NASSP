@@ -2514,7 +2514,7 @@ void LEM_LR::Timestep(double simdt){
 			// 12288 COUNTS = -000000 F/S
 			// SIGN REVERSED				
 			// 0.643966 F/S PER COUNT
-			lem->agc.vagc.Erasable[0][RegRNRAD] = (int16_t)(12288.0 - (rate[0] / 0.643966));
+			lem->agc.SetErasable(0, RegRNRAD, (int16_t)(12288.0 - (rate[0] / 0.643966)));
 			lem->agc.SetInputChannelBit(013, RadarActivity, 0);
 			lem->agc.GenerateRadarupt();
 			ruptSent = 1;
@@ -2528,7 +2528,7 @@ void LEM_LR::Timestep(double simdt){
 			// LR (LR VEL Z)
 			// 12288 COUNTS = +00000 F/S
 			// 0.866807 F/S PER COUNT
-			lem->agc.vagc.Erasable[0][RegRNRAD] = (int16_t)(12288.0 + (rate[2] / 0.866807));
+			lem->agc.SetErasable(0, RegRNRAD, (int16_t)(12288.0 + (rate[2] / 0.866807)));
 			lem->agc.SetInputChannelBit(013, RadarActivity, 0);
 			lem->agc.GenerateRadarupt();
 			ruptSent = 3;
@@ -2542,7 +2542,7 @@ void LEM_LR::Timestep(double simdt){
 			// LR (LR VEL Y)
 			// 12288 COUNTS = +000000 F/S
 			// 1.211975 F/S PER COUNT
-			lem->agc.vagc.Erasable[0][RegRNRAD] = (int16_t)(12288.0 + (rate[1] / 1.211975));
+			lem->agc.SetErasable(0, RegRNRAD, (int16_t)(12288.0 + (rate[1] / 1.211975)));
 			lem->agc.SetInputChannelBit(013, RadarActivity, 0);
 			lem->agc.GenerateRadarupt();
 			ruptSent = 5;
@@ -2554,11 +2554,11 @@ void LEM_LR::Timestep(double simdt){
 			// Low range is 1.079 feet per count
 			if (val33[LRRangeLowScale] == 0) {
 				// Hi Range
-				lem->agc.vagc.Erasable[0][RegRNRAD] = (int16_t)(range / 5.395);
+				lem->agc.SetErasable(0, RegRNRAD, (int16_t)(range / 5.395));
 			}
 			else {
 				// Lo Range
-				lem->agc.vagc.Erasable[0][RegRNRAD] = (int16_t)(range / 1.079);
+				lem->agc.SetErasable(0, RegRNRAD, (int16_t)(range / 1.079));
 			}
 			lem->agc.SetInputChannelBit(013, RadarActivity, 0);
 			lem->agc.GenerateRadarupt();
