@@ -172,6 +172,8 @@ void AGCBridge::set_input_channel(int channel, int value) {
 
 	if (channel == 015) {
 		send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_BUTTON, value));
+	} else if ((channel == 016) && (value != 0)) {
+		send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_NAV_BUTTON, value));
 	} else if ((channel >= 030) && (channel <= 033)) {
 		send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | value));
 	}
@@ -309,7 +311,7 @@ void AGCBridge::handle_message(MonitorMessage &msg) {
 		}
 
 		if (new_value && (data != 0) && (data != 077777)) {
-			mon_log << std::oct << channel << ": " << data << std::endl;
+			//mon_log << std::oct << channel << ": " << data << std::endl;
 			channels[channel] = data;
 			agc->SetOutputChannel(channel, data);
 		}

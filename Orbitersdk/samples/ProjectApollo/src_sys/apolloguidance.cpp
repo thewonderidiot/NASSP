@@ -1020,6 +1020,10 @@ void ApolloGuidance::GenericWriteMemory(unsigned int loc, int val)
 
 	if (bank >= 0 && bank < 8)
 		vagc.Erasable[bank][addr] = val;
+
+	if (agc_bridge) {
+		agc_bridge->set_erasable(bank, addr, val);
+	}
 	return;
 }
 
