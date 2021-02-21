@@ -613,6 +613,20 @@ void ApolloGuidance::LoadState(FILEHANDLE scn)
 			agc_bridge->halt();
 			agc_bridge->simulate_erasable();
 		}
+		else if (!strnicmp(line, "TLOSSW", 6)) {
+			int num;
+			sscanf(line + 6, "%d", &num);
+			if (agc_bridge) {
+				agc_bridge->set_tloss_wts((uint16_t)num);
+			}
+		}
+		else if (!strnicmp(line, "TLOSST", 6)) {
+			int num;
+			sscanf(line + 6, "%d", &num);
+			if (agc_bridge) {
+				agc_bridge->set_tloss_t12s((uint16_t)num);
+			}
+		}
 
 		papiReadScenario_bool(line, "PROGALARM", ProgAlarm);
 		papiReadScenario_bool(line, "GIMBALLOCKALARM", GimbalLockAlarm);

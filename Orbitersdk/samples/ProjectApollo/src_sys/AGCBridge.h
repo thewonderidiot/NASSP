@@ -60,14 +60,23 @@
 #define MON_DSKY_STATUS     0x000B
 #define MON_DSKY_NAV_BUTTON 0x000C
 
-#define MON_NASSP_PIPAX   0x0004
-#define MON_NASSP_CDUXCMD 0x0020
-#define MON_NASSP_CDUYCMD 0x0021
-#define MON_NASSP_CDUZCMD 0x0022
-#define MON_NASSP_CDUTCMD 0x0023
-#define MON_NASSP_CDUSCMD 0x0024
-#define MON_NASSP_THRUST  0x0025
-#define MON_NASSP_ALTM    0x0026
+#define MON_NASSP_CHAN10  0x0000
+#define MON_NASSP_CHAN30  0x0001
+#define MON_NASSP_CHAN31  0x0002
+#define MON_NASSP_CHAN32  0x0003
+#define MON_NASSP_CHAN33  0x0004
+#define MON_NASSP_TLOSS_W 0x0010
+#define MON_NASSP_TLOSS_T 0x0011
+#define MON_NASSP_PIPAX   0x0020
+#define MON_NASSP_PIPAY   0x0021
+#define MON_NASSP_PIPAZ   0x0022
+#define MON_NASSP_CDUXCMD 0x0030
+#define MON_NASSP_CDUYCMD 0x0031
+#define MON_NASSP_CDUZCMD 0x0032
+#define MON_NASSP_CDUTCMD 0x0033
+#define MON_NASSP_CDUSCMD 0x0034
+#define MON_NASSP_THRUST  0x0035
+#define MON_NASSP_ALTM    0x0036
 
 #define MON_STOP_NISQ 0x0002
 
@@ -108,6 +117,8 @@ public:
 	void set_output_channel(int channel, int value);
 	int get_channel_value(int channel);
 	void pulse_pipa(int reg_pipa, int pulses);
+	void set_tloss_wts(uint16_t wts);
+	void set_tloss_t12s(uint16_t t12s);
 	void service(double simt);
 
 private:

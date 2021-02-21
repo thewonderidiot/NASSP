@@ -75,10 +75,12 @@ AGCBridge::AGCBridge(char *serial, ApolloGuidance *guidance) {
 }
 
 AGCBridge::~AGCBridge() {
-	send_message(MonitorMessage(MON_GROUP_NASSP, 0, 0));
-	send_message(MonitorMessage(MON_GROUP_NASSP, 1, 0));
-	send_message(MonitorMessage(MON_GROUP_NASSP, 2, 0));
-	send_message(MonitorMessage(MON_GROUP_NASSP, 3, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_TLOSS_W, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_TLOSS_T, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CHAN30, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CHAN31, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CHAN32, 0));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CHAN33, 0));
 	Sleep(50);
 	FT_Close(mon_handle);
 	mon_log << "Monitor disconnected." << std::endl;
@@ -100,11 +102,11 @@ void AGCBridge::service(double simt) {
 
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 005));
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 006));
-	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 010));
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 011));
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 012));
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 013));
 	send_message(MonitorMessage(MON_GROUP_MON_CHAN, 014));
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CHAN10));
 	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CDUXCMD));
 	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CDUYCMD));
 	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CDUZCMD));
@@ -175,7 +177,7 @@ void AGCBridge::set_input_channel(int channel, int value) {
 	} else if ((channel == 016) && (value != 0)) {
 		send_message(MonitorMessage(MON_GROUP_DSKY, MON_DSKY_NAV_BUTTON, value));
 	} else if ((channel >= 030) && (channel <= 033)) {
-		send_message(MonitorMessage(MON_GROUP_NASSP, channel - 030, 0x8000 | value));
+		send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_CHAN30 + (channel - 030), 0x8000 | value));
 	}
 }
 
@@ -186,6 +188,14 @@ void AGCBridge::set_output_channel(int channel, int value) {
 
 int AGCBridge::get_channel_value(int channel) {
 	return channels[channel];
+}
+
+void AGCBridge::set_tloss_wts(uint16_t wts) {
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_TLOSS_W, wts));
+}
+
+void AGCBridge::set_tloss_t12s(uint16_t t12s) {
+	send_message(MonitorMessage(MON_GROUP_NASSP, MON_NASSP_TLOSS_T, t12s));
 }
 
 void AGCBridge::send_message(MonitorMessage &msg) {
@@ -269,6 +279,10 @@ void AGCBridge::handle_message(MonitorMessage &msg) {
 		uint16_t channel;
 
 		switch (msg.address) {
+		case MON_NASSP_CHAN10:
+			agc->SetOutputChannel(010, msg.data);
+			return;
+
 		case MON_NASSP_CDUXCMD:
 			channel = 0174;
 			if (data & 040000) {
@@ -291,10 +305,12 @@ void AGCBridge::handle_message(MonitorMessage &msg) {
 			break;
 
 		case MON_NASSP_CDUTCMD:
+			if (new_value) mon_log << std::oct << "CDUT: " << data << std::endl;
 			channel = 0141;
 			break;
 
 		case MON_NASSP_CDUSCMD:
+			if (new_value) mon_log << std::oct << "CDUS: " << data << std::endl;
 			channel = 0140;
 			break;
 
